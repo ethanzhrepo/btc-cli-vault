@@ -2,9 +2,16 @@
 
 一个安全的btc命令行钱包，支持多种密钥存储的命令行程序，避免私钥丢失或者泄漏风险。
 
-![GitHub commit activity](https://img.shields.io/github/commit-activity/w/ethanzhrepo/eth-cli-vault)
-![GitHub Release](https://img.shields.io/github/v/release/ethanzhrepo/eth-cli-vault)
-![GitHub Repo stars](https://img.shields.io/github/stars/ethanzhrepo/eth-cli-vault)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/w/ethanzhrepo/btc-cli-vault)
+![GitHub Release](https://img.shields.io/github/v/release/ethanzhrepo/btc-cli-vault)
+![GitHub Repo stars](https://img.shields.io/github/stars/ethanzhrepo/btc-cli-vault)
+![GitHub License](https://img.shields.io/github/license/ethanzhrepo/btc-cli-vault)
+
+
+<a href="https://t.me/ethanatca"><img alt="" src="https://img.shields.io/badge/Telegram-%40ethanatca-blue" /></a>
+<a href="https://x.com/intent/follow?screen_name=0x99_Ethan">
+<img alt="X (formerly Twitter) Follow" src="https://img.shields.io/twitter/follow/0x99_Ethan">
+</a>
 
 <a href="https://t.me/ethanatca"><img alt="" src="https://img.shields.io/badge/Telegram-%40ethanatca-blue" /></a>
 <a href="https://x.com/intent/follow?screen_name=0x99_Ethan">

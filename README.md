@@ -3,10 +3,10 @@
 A secure command-line wallet for Bitcoin that supports multiple key storage providers.
 
 
-![GitHub commit activity](https://img.shields.io/github/commit-activity/w/ethanzhrepo/eth-cli-vault)
-![GitHub Release](https://img.shields.io/github/v/release/ethanzhrepo/eth-cli-vault)
-![GitHub Repo stars](https://img.shields.io/github/stars/ethanzhrepo/eth-cli-vault)
-![GitHub License](https://img.shields.io/github/license/ethanzhrepo/eth-cli-vault)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/w/ethanzhrepo/btc-cli-vault)
+![GitHub Release](https://img.shields.io/github/v/release/ethanzhrepo/btc-cli-vault)
+![GitHub Repo stars](https://img.shields.io/github/stars/ethanzhrepo/btc-cli-vault)
+![GitHub License](https://img.shields.io/github/license/ethanzhrepo/btc-cli-vault)
 
 
 <a href="https://t.me/ethanatca"><img alt="" src="https://img.shields.io/badge/Telegram-%40ethanatca-blue" /></a>
