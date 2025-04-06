@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -33,6 +34,7 @@ func CreateCmd() *cobra.Command {
 	var force bool
 	var useTestnet bool
 	var showMnemonic bool
+	var addTaprootScript bool // 添加 Taproot 脚本路径选项
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -212,6 +214,17 @@ func CreateCmd() *cobra.Command {
 				fmt.Printf("Error creating taproot account: %v\n", err)
 				os.Exit(1)
 			}
+
+			// 如果启用了 Taproot 脚本路径选项，添加示例脚本路径
+			if addTaprootScript {
+				err = addTaprootScriptPath(&p2trAccount, masterKey, coinType, params)
+				if err != nil {
+					fmt.Printf("Error adding Taproot script path: %v\n", err)
+					os.Exit(1)
+				}
+				fmt.Println("Added example script path to Taproot account (2-of-3 multisig)")
+			}
+
 			accounts = append(accounts, p2trAccount)
 
 			// 创建钱包文件对象
@@ -275,21 +288,43 @@ func CreateCmd() *cobra.Command {
 				}
 			}
 
-			// 显示生成的地址信息
+			// 输出生成的地址信息
 			fmt.Printf("\nGenerated Bitcoin Wallet Addresses (%s):\n", networkName)
 			fmt.Println("========================================")
 
 			for _, account := range accounts {
 				var accountType string
 				switch account.Type {
-				case "legacy":
+				case "p2pkh":
 					accountType = "P2PKH (Legacy)"
-				case "segwit":
+				case "p2wpkh":
 					accountType = "P2WPKH (SegWit)"
-				case "nested-segwit":
+				case "p2sh-p2wpkh":
 					accountType = "P2SH-P2WPKH (Nested SegWit)"
-				case "taproot":
+				case "p2tr":
 					accountType = "P2TR (Taproot)"
+					if account.InternalPubKey != "" {
+						fmt.Printf("%s address: \033[1;32m%s\033[0m\n", accountType, account.Address)
+						fmt.Printf("  Derivation path: %s\n", account.DerivationPath)
+						fmt.Printf("  Internal pubkey: %s\n", account.InternalPubKey)
+
+						// 显示 Taproot 脚本路径信息（如果有）
+						if account.TapScriptInfo != nil && len(account.TapScriptInfo.Leaves) > 0 {
+							fmt.Printf("  Script paths: %d\n", len(account.TapScriptInfo.Leaves))
+							for i, leaf := range account.TapScriptInfo.Leaves {
+								tagInfo := ""
+								if leaf.Tag != "" {
+									tagInfo = fmt.Sprintf(" (%s)", leaf.Tag)
+								}
+								fmt.Printf("    Path %d%s: Script length: %d bytes, Version: 0x%x\n",
+									i+1, tagInfo, len(leaf.Script)/2, leaf.LeafVersion)
+							}
+						} else {
+							fmt.Println("  Key-path only (no script paths defined)")
+						}
+
+						continue
+					}
 				}
 				fmt.Printf("%s address: \033[1;32m%s\033[0m\n", accountType, account.Address)
 				fmt.Printf("  Derivation path: %s\n", account.DerivationPath)
@@ -332,6 +367,7 @@ func CreateCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force overwrite if wallet file already exists")
 	cmd.Flags().BoolVarP(&useTestnet, "testnet", "t", false, "Use Bitcoin testnet instead of mainnet")
 	cmd.Flags().BoolVarP(&showMnemonic, "show-mnemonic", "s", false, "Show mnemonic phrase (use with caution!)")
+	cmd.Flags().BoolVar(&addTaprootScript, "with-taproot-script", false, "Add example script path to Taproot accounts (2-of-3 multisig)")
 
 	cmd.MarkFlagRequired("output")
 	cmd.MarkFlagRequired("name")
@@ -428,27 +464,6 @@ func generateP2WPKHAddress(publicKey *btcec.PublicKey, params *chaincfg.Params) 
 	return addr.EncodeAddress(), nil
 }
 
-// 生成P2SH地址 (Pay to Script Hash)
-func generateP2SHAddress(publicKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
-	// 创建P2WPKH脚本
-	pubKeyHash := btcutil.Hash160(publicKey.SerializeCompressed())
-	script, err := txscript.NewScriptBuilder().
-		AddOp(txscript.OP_0).
-		AddData(pubKeyHash).
-		Script()
-	if err != nil {
-		return "", err
-	}
-
-	// 将P2WPKH脚本放入P2SH中 (P2SH-P2WPKH)
-	scriptHash := btcutil.Hash160(script)
-	addr, err := btcutil.NewAddressScriptHash(scriptHash, params)
-	if err != nil {
-		return "", err
-	}
-	return addr.EncodeAddress(), nil
-}
-
 // 生成P2TR地址 (Pay to Taproot)
 func generateP2TRAddress(publicKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
 	// 注意：在真实场景中，你可能需要考虑更多关于Taproot的细节
@@ -467,8 +482,24 @@ func generateP2TRAddress(publicKey *btcec.PublicKey, params *chaincfg.Params) (s
 // 创建不同类型的账户信息
 func createAccountInfo(accountType string, purpose uint32, coinType uint32, masterKey *hdkeychain.ExtendedKey, params *chaincfg.Params) (AccountInfo, error) {
 	// 创建基本账户信息
+	var standardizedType string
+
+	// 标准化账户类型
+	switch accountType {
+	case "legacy":
+		standardizedType = "p2pkh"
+	case "segwit":
+		standardizedType = "p2wpkh"
+	case "nested-segwit":
+		standardizedType = "p2sh-p2wpkh"
+	case "taproot":
+		standardizedType = "p2tr"
+	default:
+		standardizedType = accountType
+	}
+
 	account := AccountInfo{
-		Type:    accountType,
+		Type:    standardizedType,
 		Purpose: purpose,
 	}
 
@@ -518,15 +549,59 @@ func createAccountInfo(accountType string, purpose uint32, coinType uint32, mast
 	var address string
 	var err2 error
 
-	switch accountType {
-	case "legacy":
+	// 提前计算公钥哈希，多种地址类型会用到
+	pubKeyHash := btcutil.Hash160(publicKey.SerializeCompressed())
+
+	switch standardizedType {
+	case "p2pkh":
 		address, err2 = generateP2PKHAddress(publicKey, params)
-	case "segwit":
+	case "p2wpkh":
 		address, err2 = generateP2WPKHAddress(publicKey, params)
-	case "nested-segwit":
-		address, err2 = generateP2SHAddress(publicKey, params)
-	case "taproot":
-		address, err2 = generateP2TRAddress(publicKey, params)
+	case "p2sh-p2wpkh":
+		// 生成并存储P2WPKH赎回脚本
+		p2wpkhScript, err := txscript.NewScriptBuilder().
+			AddOp(txscript.OP_0).
+			AddData(pubKeyHash).
+			Script()
+		if err != nil {
+			return account, fmt.Errorf("error creating P2WPKH script: %v", err)
+		}
+
+		// 存储十六进制格式的赎回脚本
+		account.RedeemScript = hex.EncodeToString(p2wpkhScript)
+
+		// 使用赎回脚本生成P2SH地址
+		scriptHash := btcutil.Hash160(p2wpkhScript)
+		addr, err := btcutil.NewAddressScriptHash(scriptHash, params)
+		if err != nil {
+			return account, fmt.Errorf("error creating P2SH address: %v", err)
+		}
+		address = addr.EncodeAddress()
+		err2 = nil // 我们已经处理了错误
+	case "p2tr":
+		// 创建Taproot内部密钥和地址
+		internalKey := publicKey
+
+		// 存储x-only公钥（Taproot的内部公钥）
+		// 在Taproot中，我们只使用公钥的x坐标，y坐标由奇偶性来标识
+		serializedPubKey := internalKey.SerializeCompressed()
+		// 去掉前缀字节（0x02或0x03），仅保留x坐标部分（32字节）
+		xOnlyPubKey := serializedPubKey[1:33]
+		account.InternalPubKey = hex.EncodeToString(xOnlyPubKey)
+
+		// 创建Taproot输出密钥并生成地址
+		// 当前仅使用内部密钥，没有脚本路径
+		taprootKey := txscript.ComputeTaprootKeyNoScript(internalKey)
+		addr, err := btcutil.NewAddressTaproot(taprootKey.SerializeCompressed()[1:], params)
+		if err != nil {
+			return account, fmt.Errorf("error creating Taproot address: %v", err)
+		}
+		address = addr.EncodeAddress()
+
+		// 默认只创建密钥路径，但后续可以通过钱包软件添加脚本路径
+		// TapScriptInfo 初始化为 nil，表示该账户仅支持密钥路径花费
+
+		err2 = nil // 我们已经处理了错误
 	default:
 		return account, fmt.Errorf("unsupported account type: %s", accountType)
 	}
@@ -572,4 +647,79 @@ func parseOutputTargets(outputStr string) ([]OutputTarget, error) {
 	}
 
 	return targets, nil
+}
+
+// 向 Taproot 账户添加示例脚本路径
+func addTaprootScriptPath(account *AccountInfo, masterKey *hdkeychain.ExtendedKey, coinType uint32, params *chaincfg.Params) error {
+	// 确保账户类型为 p2tr
+	if account.Type != "p2tr" {
+		return fmt.Errorf("cannot add Taproot script path to non-Taproot account")
+	}
+
+	// 解析内部公钥
+	internalPubKeyBytes, err := hex.DecodeString(account.InternalPubKey)
+	if err != nil {
+		return fmt.Errorf("error decoding internal pubkey: %v", err)
+	}
+
+	// 创建 2-of-3 多签脚本所需的额外公钥
+	// 为了示例，我们使用同一个种子但不同的路径派生两个额外的公钥
+	derivationBase := fmt.Sprintf("m/%d'/%d'/%d'/", BIP86Purpose, coinType, 0)
+
+	// 派生额外公钥 1 (使用索引 1)
+	extraKey1, err := DeriveKeyFromPath(masterKey, derivationBase+"1/0")
+	if err != nil {
+		return fmt.Errorf("error deriving extra key 1: %v", err)
+	}
+	extraPrivKey1, err := extraKey1.ECPrivKey()
+	if err != nil {
+		return fmt.Errorf("error getting extra private key 1: %v", err)
+	}
+	extraPubKey1 := extraPrivKey1.PubKey()
+
+	// 派生额外公钥 2 (使用索引 2)
+	extraKey2, err := DeriveKeyFromPath(masterKey, derivationBase+"2/0")
+	if err != nil {
+		return fmt.Errorf("error deriving extra key 2: %v", err)
+	}
+	extraPrivKey2, err := extraKey2.ECPrivKey()
+	if err != nil {
+		return fmt.Errorf("error getting extra private key 2: %v", err)
+	}
+	extraPubKey2 := extraPrivKey2.PubKey()
+
+	// 为了 Taproot，我们使用 x-only 公钥
+	pubKey1Bytes := extraPubKey1.SerializeCompressed()[1:33]
+	pubKey2Bytes := extraPubKey2.SerializeCompressed()[1:33]
+
+	// 创建多签脚本 (2-of-3)
+	// 脚本格式：<OP_2> <pubkey1> <pubkey2> <internalPubKey> <OP_3> <OP_CHECKMULTISIG>
+	multiSigScript, err := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_2).
+		AddData(pubKey1Bytes).
+		AddData(pubKey2Bytes).
+		AddData(internalPubKeyBytes).
+		AddOp(txscript.OP_3).
+		AddOp(txscript.OP_CHECKMULTISIG).
+		Script()
+	if err != nil {
+		return fmt.Errorf("error creating multisig script: %v", err)
+	}
+
+	// 创建 TapScriptInfo 结构
+	account.TapScriptInfo = &TapScriptInfo{
+		Leaves: []TapLeaf{
+			{
+				Tag:         "multisig_2of3",
+				Script:      hex.EncodeToString(multiSigScript),
+				LeafVersion: 0xc0, // 标准 tapscript 版本
+			},
+		},
+		// MerkleRoot 可以留空，由钱包软件在需要时计算
+	}
+
+	// 注意: 添加脚本路径不会改变地址，因为地址是基于内部公钥和脚本的默克尔根生成的
+	// 在实际场景中，你可能需要重新计算 merkle root 并更新地址
+
+	return nil
 }

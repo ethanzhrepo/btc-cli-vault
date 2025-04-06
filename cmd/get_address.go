@@ -9,9 +9,13 @@ import (
 	"strings"
 	"syscall"
 
+	"encoding/hex"
+
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/ethanzhrepo/btc-cli-vault/util"
 	"github.com/spf13/cobra"
 	"github.com/tyler-smith/go-bip39"
@@ -153,13 +157,13 @@ func GetAddressCmd() *cobra.Command {
 					// 显示账户类型
 					var accountTypeName string
 					switch account.Type {
-					case "legacy":
+					case "p2pkh", "legacy":
 						accountTypeName = "P2PKH (Legacy)"
-					case "segwit":
+					case "p2wpkh", "segwit":
 						accountTypeName = "P2WPKH (SegWit)"
-					case "nested-segwit":
+					case "p2sh-p2wpkh", "nested-segwit":
 						accountTypeName = "P2SH-P2WPKH (Nested SegWit)"
-					case "taproot":
+					case "p2tr", "taproot":
 						accountTypeName = "P2TR (Taproot)"
 					default:
 						accountTypeName = account.Type
@@ -184,13 +188,14 @@ func GetAddressCmd() *cobra.Command {
 					// 根据账户类型生成地址
 					var addr string
 					switch account.Type {
-					case "legacy":
+					case "p2pkh", "legacy":
 						addr, err = generateP2PKHAddress(pubKey, params)
-					case "segwit":
+					case "p2wpkh", "segwit":
 						addr, err = generateP2WPKHAddress(pubKey, params)
-					case "nested-segwit":
-						addr, err = generateP2SHAddress(pubKey, params)
-					case "taproot":
+					case "p2sh-p2wpkh", "nested-segwit":
+						// Use redeem script if available
+						addr, err = generateP2SHAddressFromAccount(account, pubKey, params)
+					case "p2tr", "taproot":
 						addr, err = generateP2TRAddress(pubKey, params)
 					default:
 						fmt.Printf("Warning: Unknown account type: %s\n", account.Type)
@@ -205,6 +210,26 @@ func GetAddressCmd() *cobra.Command {
 					// 显示地址信息
 					fmt.Printf("%s address: \033[1;32m%s\033[0m\n", accountTypeName, addr)
 					fmt.Printf("  Derivation path: %s\n", account.DerivationPath)
+
+					// 显示内部公钥（仅适用于Taproot）
+					if (account.Type == "p2tr" || account.Type == "taproot") && account.InternalPubKey != "" {
+						fmt.Printf("  Internal pubkey: %s\n", account.InternalPubKey)
+
+						// 显示 Taproot 脚本路径信息（如果有）
+						if account.TapScriptInfo != nil && len(account.TapScriptInfo.Leaves) > 0 {
+							fmt.Printf("  Script paths: %d\n", len(account.TapScriptInfo.Leaves))
+							for i, leaf := range account.TapScriptInfo.Leaves {
+								tagInfo := ""
+								if leaf.Tag != "" {
+									tagInfo = fmt.Sprintf(" (%s)", leaf.Tag)
+								}
+								fmt.Printf("    Path %d%s: Script length: %d bytes, Version: 0x%x\n",
+									i+1, tagInfo, len(leaf.Script)/2, leaf.LeafVersion)
+							}
+						} else {
+							fmt.Println("  Key-path only (no script paths defined)")
+						}
+					}
 
 					// 如果显示私钥，则输出
 					if showPrivateKey {
@@ -336,6 +361,61 @@ func deriveKeyFromPath(masterKey *hdkeychain.ExtendedKey, path string) (*hdkeych
 	}
 
 	return currentKey, nil
+}
+
+// 生成P2SH地址 (Pay to Script Hash)
+func generateP2SHAddress(publicKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
+	// 创建P2WPKH脚本
+	pubKeyHash := btcutil.Hash160(publicKey.SerializeCompressed())
+	script, err := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_0).
+		AddData(pubKeyHash).
+		Script()
+	if err != nil {
+		return "", err
+	}
+
+	// 将P2WPKH脚本放入P2SH中 (P2SH-P2WPKH)
+	scriptHash := btcutil.Hash160(script)
+	addr, err := btcutil.NewAddressScriptHash(scriptHash, params)
+	if err != nil {
+		return "", err
+	}
+	return addr.EncodeAddress(), nil
+}
+
+// 从派生的账户信息和存储的赎回脚本生成P2SH地址
+func generateP2SHAddressFromAccount(account AccountInfo, pubKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
+	var script []byte
+	var err error
+
+	// 如果账户存储了赎回脚本，使用它
+	if account.RedeemScript != "" {
+		// 从十六进制字符串解码赎回脚本
+		script, err = hex.DecodeString(account.RedeemScript)
+		if err != nil {
+			return "", fmt.Errorf("error decoding stored redeem script: %v", err)
+		}
+	} else {
+		// 否则生成一个新脚本（兼容旧钱包）
+		pubKeyHash := btcutil.Hash160(pubKey.SerializeCompressed())
+		script, err = txscript.NewScriptBuilder().
+			AddOp(txscript.OP_0).
+			AddData(pubKeyHash).
+			Script()
+		if err != nil {
+			return "", fmt.Errorf("error creating P2WPKH script: %v", err)
+		}
+	}
+
+	// 计算脚本哈希并创建P2SH地址
+	scriptHash := btcutil.Hash160(script)
+	addr, err := btcutil.NewAddressScriptHash(scriptHash, params)
+	if err != nil {
+		return "", err
+	}
+
+	return addr.EncodeAddress(), nil
 }
 
 // The address generation functions have been moved to a common location

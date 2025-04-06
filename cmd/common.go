@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -34,11 +35,28 @@ type WalletFile struct {
 
 // AccountInfo 存储不同类型账户的信息
 type AccountInfo struct {
-	Type           string `json:"type"`            // 账户类型：legacy, segwit, nested-segwit, taproot
-	Purpose        uint32 `json:"purpose"`         // BIP用途：44, 49, 84, 86
-	HDPath         string `json:"hd_path"`         // 完整HD路径
-	DerivationPath string `json:"derivation_path"` // 默认派生路径
-	Address        string `json:"address"`         // 生成的地址
+	Type           string         `json:"type"`                      // 账户类型：p2pkh, p2wpkh, p2sh-p2wpkh, p2tr
+	Purpose        uint32         `json:"purpose"`                   // BIP用途：44, 49, 84, 86
+	HDPath         string         `json:"hd_path"`                   // 完整HD路径
+	DerivationPath string         `json:"derivation_path"`           // 默认派生路径
+	Address        string         `json:"address"`                   // 生成的地址
+	RedeemScript   string         `json:"redeem_script,omitempty"`   // 赎回脚本 (用于P2SH)
+	WitnessScript  string         `json:"witness_script,omitempty"`  // 见证脚本 (用于P2WSH)
+	InternalPubKey string         `json:"internal_pubkey,omitempty"` // Taproot内部公钥 (x-only公钥)
+	TapScriptInfo  *TapScriptInfo `json:"tap_script_info,omitempty"` // Taproot脚本信息 (用于脚本路径花费)
+}
+
+// TapScriptInfo 存储 Taproot 脚本路径信息
+type TapScriptInfo struct {
+	Leaves     []TapLeaf `json:"leaves"`                // 脚本叶子列表
+	MerkleRoot string    `json:"merkle_root,omitempty"` // 可选: 预计算的默克尔根
+}
+
+// TapLeaf 表示 Taproot 脚本树中的一个叶子节点
+type TapLeaf struct {
+	Tag         string `json:"tag,omitempty"` // 可选: 脚本的人类可读标签
+	Script      string `json:"script"`        // 十六进制编码的脚本
+	LeafVersion uint8  `json:"leaf_version"`  // 叶子版本，通常为 0xc0 (192)
 }
 
 // 从路径字符串派生密钥
@@ -80,10 +98,15 @@ func DeriveKeyFromPath(masterKey *hdkeychain.ExtendedKey, path string) (*hdkeych
 }
 
 // 将字符串转换为 uint32
+// StringToUint32 converts a string to a uint32 using strconv.ParseUint for robustness.
 func StringToUint32(s string) (uint32, error) {
-	var i uint32
-	_, err := fmt.Sscanf(s, "%d", &i)
-	return i, err
+	// ParseUint parameters: string, base (10 for decimal), bitSize (32 for uint32)
+	val, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		// Optionally wrap the error for more context
+		return 0, fmt.Errorf("failed to parse '%s' as uint32: %w", s, err)
+	}
+	return uint32(val), nil
 }
 
 // initTxConfig initializes the configuration for transaction commands

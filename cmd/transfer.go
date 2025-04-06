@@ -5,24 +5,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
-	"math/big"
+	"io"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcwallet/wallet/txauthor"
-	"github.com/btcsuite/btcwallet/wallet/txsizes"
 	"github.com/ethanzhrepo/btc-cli-vault/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/term"
 )
@@ -41,117 +39,94 @@ func TransferBTCCmd() *cobra.Command {
 	cmd.Flags().StringP("provider", "p", "", "Key provider (e.g., google)")
 	cmd.Flags().StringP("name", "n", "", "Name of the wallet file (for cloud storage)")
 	cmd.Flags().StringP("file", "f", "", "Local wallet file path")
-	cmd.Flags().Bool("encodeOnly", false, "Only encode the transaction, do not broadcast")
-	cmd.Flags().Bool("feeOnly", false, "Only display fee estimation")
+	cmd.Flags().Bool("dry-run", false, "Only encode the transaction, do not broadcast")
+	cmd.Flags().Bool("fee-only", false, "Only display fee estimation")
 	cmd.Flags().BoolP("yes", "y", false, "Automatically confirm the transaction")
-	cmd.Flags().Uint64("feeRate", 0, "Fee rate in satoshis per byte (0 for auto-selection)")
+	cmd.Flags().Uint64("fee-rate", 0, "Fee rate in satoshis per byte (0 for auto-selection)")
 	cmd.Flags().StringP("fee-preference", "", "normal", "Fee preference when auto-selecting (fastest, fast, normal, economic, minimum)")
-	cmd.Flags().StringP("from-type", "", "p2pkh", "Address type to send from (p2pkh, p2wpkh, p2tr), set p2pkh for legacy addresses, p2wpkh for segwit addresses, p2tr for taproot addresses. If you are not sure, define your own address type by using the --from flag.")
-	cmd.Flags().StringP("from", "", "", "Specific Bitcoin address to send from (will auto-detect type)")
-	cmd.Flags().StringP("change-address", "c", "", "Change address (optional, defaults to sender address)")
-	cmd.Flags().String("utxo", "", "Specify UTXOs to use, comma separated (txid:vout:amount format)")
-	cmd.Flags().StringP("rpc", "R", "", "Bitcoin node RPC URL (overrides config)")
+	cmd.Flags().StringP("api", "R", "", "Bitcoin node RPC URL (overrides config)")
+	cmd.Flags().Bool("testnet", false, "Use Bitcoin testnet instead of mainnet")
 
-	cmd.MarkFlagsMutuallyExclusive("from", "from-type")
 	cmd.MarkFlagRequired("amount")
 	cmd.MarkFlagRequired("to")
 
 	return cmd
 }
 
-// TransferWalletFile represents the structure of the wallet JSON file for transfer command
-type TransferWalletFile struct {
-	EncryptedMnemonic util.EncryptedMnemonic `json:"encrypted_mnemonic"`
-	DerivationPath    string                 `json:"derivation_path"`
-	TestNet           bool                   `json:"testnet"`
-}
-
-// UTXO represents an unspent transaction output
-type UTXO struct {
-	TxID   string
-	Vout   uint32
-	Amount uint64
-}
-
 func runTransferBTC(cmd *cobra.Command, args []string) error {
-	// Parse flags
-	amountStr, _ := cmd.Flags().GetString("amount")
+	// Parse basic flags
 	toAddress, _ := cmd.Flags().GetString("to")
+	amountStr, _ := cmd.Flags().GetString("amount")
 	provider, _ := cmd.Flags().GetString("provider")
 	name, _ := cmd.Flags().GetString("name")
 	filePath, _ := cmd.Flags().GetString("file")
-	encodeOnly, _ := cmd.Flags().GetBool("encodeOnly")
-	feeOnly, _ := cmd.Flags().GetBool("feeOnly")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	feeOnly, _ := cmd.Flags().GetBool("fee-only")
 	autoConfirm, _ := cmd.Flags().GetBool("yes")
-	userSetFeeRate, _ := cmd.Flags().GetUint64("feeRate")
-	feePreferenceStr, _ := cmd.Flags().GetString("fee-preference")
-	fromType, _ := cmd.Flags().GetString("from-type")
-	fromAddress, _ := cmd.Flags().GetString("from")
-	changeAddress, _ := cmd.Flags().GetString("change-address")
-	utxoStr, _ := cmd.Flags().GetString("utxo")
-	nodeURL, _ := cmd.Flags().GetString("rpc")
+	feeRate, _ := cmd.Flags().GetUint64("fee-rate")
+	feePreference, _ := cmd.Flags().GetString("fee-preference")
+	apiURL, _ := cmd.Flags().GetString("api")
+	testnet, _ := cmd.Flags().GetBool("testnet")
 
-	// Check mutual exclusivity between provider+name and file
-	if (provider != "" || name != "") && filePath != "" {
-		return fmt.Errorf("--file and --provider/--name are mutually exclusive, use one or the other")
+	// Initialize config
+	initConfig()
+
+	// Set network parameters based on testnet flag
+	params := &chaincfg.MainNetParams // Default to mainnet
+	if testnet {
+		params = &chaincfg.TestNet3Params
+		fmt.Println("Using testnet network")
 	}
 
-	// Ensure we have either file or provider
-	if provider == "" && filePath == "" {
-		return fmt.Errorf("either --provider or --file must be specified")
-	}
-
-	// Get Bitcoin node RPC URL from config if not provided
-	if nodeURL == "" && !encodeOnly {
-		var err error
-		nodeURL, err = initBitcoinRPCConfig()
-		if err != nil {
-			return fmt.Errorf("failed to initialize Bitcoin RPC config: %v", err)
-		}
-		// If nodeURL is still empty, we'll use the default API endpoints
-		if nodeURL == "" {
-			fmt.Println("No RPC URL configured. Using default mempool.space API.")
-		}
-	}
-
-	// Print provider or file info
-	if provider != "" {
-		fmt.Printf("Using provider: %s\n", provider)
-	} else {
-		fmt.Printf("Using wallet file: %s\n", filePath)
-	}
-
-	// Parse amount with unit
-	amountInSatoshis, err := parseBitcoinAmount(amountStr)
+	// Validate destination address with the appropriate network
+	err := util.ValidateBitcoinAddress(toAddress, params == &chaincfg.TestNet3Params)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid destination address: %v", err)
 	}
 
-	// Get wallet data from provider or file
+	// Load wallet data
 	var walletData []byte
-	if filePath != "" {
-		// Load from local file system
-		walletData, err = util.Get(filePath, filePath)
-		if err != nil {
-			return fmt.Errorf("error loading wallet from local file: %v", err)
+	if provider != "" {
+		// Cloud storage provider
+		if name == "" {
+			return fmt.Errorf("wallet name is required when using cloud storage")
 		}
-	} else {
-		// Load from cloud provider
-		cloudPath := strings.Join([]string{util.DEFAULT_CLOUD_FILE_DIR, name + ".json"}, "/")
+		cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, name+".json")
 		walletData, err = util.Get(provider, cloudPath)
 		if err != nil {
 			return fmt.Errorf("error loading wallet from %s: %v", provider, err)
 		}
+		fmt.Printf("Loaded wallet from %s cloud storage: %s\n", provider, name)
+	} else if filePath != "" {
+		// Local file
+		walletData, err = util.Get(filePath, filePath)
+		if err != nil {
+			return fmt.Errorf("error loading wallet from local file: %v", err)
+		}
+		fmt.Printf("Loaded wallet from local file: %s\n", filePath)
+	} else {
+		return fmt.Errorf("either --provider and --name or --file must be specified")
 	}
 
 	// Parse wallet file
-	var wallet TransferWalletFile
+	var wallet WalletFile
 	if err := json.Unmarshal(walletData, &wallet); err != nil {
 		return fmt.Errorf("error parsing wallet file: %v", err)
 	}
 
+	// Check if we need to switch networks based on wallet settings
+	// Only switch from mainnet to testnet, not the other way around
+	if wallet.TestNet && params == &chaincfg.MainNetParams {
+		params = &chaincfg.TestNet3Params
+		fmt.Println("Wallet is configured for testnet, using testnet network")
+	} else if !wallet.TestNet && params == &chaincfg.TestNet3Params {
+		// Warn but don't automatically switch to mainnet
+		fmt.Println("WARNING: Using testnet with a mainnet wallet. This is likely not what you want.")
+		fmt.Println("If you meant to use mainnet, run without the --testnet flag.")
+	}
+
 	// Get password
-	fmt.Print("Please Enter \033[1;31mAES\033[0m Password: ")
+	fmt.Print("Please Enter \033[1;31mEncryption Password\033[0m: ")
 	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
 		return fmt.Errorf("error reading password: %v", err)
@@ -164,6 +139,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("error decrypting mnemonic: %v", err)
 	}
+	fmt.Println("\033[1;32m✓ Wallet decrypted successfully\033[0m")
 
 	// Ask if a passphrase was used
 	fmt.Print("Did you use a BIP39 passphrase for this wallet? (y/n): ")
@@ -172,7 +148,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 
 	var passphrase string
 	if strings.ToLower(answer) == "y" || strings.ToLower(answer) == "yes" {
-		fmt.Print("Please Enter \033[1;31mBIP39\033[0m Passphrase: ")
+		fmt.Print("Please Enter \033[1;31mBIP39 Passphrase\033[0m: ")
 		passphraseBytes, err := term.ReadPassword(int(syscall.Stdin))
 		if err != nil {
 			return fmt.Errorf("error reading passphrase: %v", err)
@@ -184,574 +160,645 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 	// Generate seed from mnemonic
 	seed := bip39.NewSeed(mnemonic, passphrase)
 
-	// Determine network parameters
-	var params *chaincfg.Params
-	if wallet.TestNet {
-		params = &chaincfg.TestNet3Params
-		fmt.Println("Using TESTNET")
-	} else {
-		params = &chaincfg.MainNetParams
-		fmt.Println("Using MAINNET")
+	// Display available addresses from the wallet
+	if len(wallet.Accounts) == 0 {
+		return fmt.Errorf("no accounts found in wallet")
 	}
 
-	// Create master key from seed
-	masterKey, err := hdkeychain.NewMaster(seed, params)
-	if err != nil {
-		return fmt.Errorf("error generating master key: %v", err)
-	}
-
-	// Derive private key using path from wallet
-	path := wallet.DerivationPath
-	derivedKey := masterKey
-	if path != "" {
-		// Use derivation path from wallet
-		parts := strings.Split(path, "/")
-		for _, part := range parts[1:] { // Skip the 'm'
-			var childIdx uint32
-			if strings.HasSuffix(part, "'") || strings.HasSuffix(part, "h") {
-				// Hardened key
-				idx, err := parseUint32(strings.TrimRight(strings.TrimRight(part, "'"), "h"))
-				if err != nil {
-					return fmt.Errorf("invalid derivation path: %v", err)
-				}
-				childIdx = idx + hdkeychain.HardenedKeyStart
-			} else {
-				// Non-hardened key
-				idx, err := parseUint32(part)
-				if err != nil {
-					return fmt.Errorf("invalid derivation path: %v", err)
-				}
-				childIdx = idx
-			}
-
-			derivedKey, err = derivedKey.Derive(childIdx)
-			if err != nil {
-				return fmt.Errorf("error deriving key: %v", err)
-			}
-		}
-	}
-
-	// Get private key and public key
-	privateKey, err := derivedKey.ECPrivKey()
-	if err != nil {
-		return fmt.Errorf("error getting private key: %v", err)
-	}
-
-	pubKey := privateKey.PubKey()
-
-	// 确定发送地址，根据参数选择
-	var senderAddress string
-	var addressType string
-
-	if fromAddress != "" {
-		// 使用用户指定的地址
-		senderAddress = fromAddress
-
-		// 自动检测地址类型
-		address, err := btcutil.DecodeAddress(fromAddress, params)
-		if err != nil {
-			return fmt.Errorf("invalid from address: %v", err)
-		}
-
-		// 根据地址类型设置类型参数
-		switch address.(type) {
-		case *btcutil.AddressPubKeyHash:
-			addressType = "p2pkh"
-		case *btcutil.AddressWitnessPubKeyHash:
-			addressType = "p2wpkh"
-		case *btcutil.AddressTaproot:
-			addressType = "p2tr"
-		case *btcutil.AddressScriptHash:
-			addressType = "p2sh"
+	fmt.Println("\n\033[1;36mAvailable addresses in wallet:\033[0m")
+	for i, account := range wallet.Accounts {
+		var accountType string
+		switch account.Type {
+		case "p2pkh", "legacy":
+			accountType = "P2PKH (Legacy)"
+		case "p2wpkh", "segwit":
+			accountType = "P2WPKH (SegWit)"
+		case "p2sh-p2wpkh", "nested-segwit":
+			accountType = "P2SH-P2WPKH (Nested SegWit)"
+		case "p2tr", "taproot":
+			accountType = "P2TR (Taproot)"
 		default:
-			return fmt.Errorf("unsupported address type: %T", address)
+			accountType = account.Type
 		}
-
-		fmt.Printf("Detected address type: %s\n", addressType)
-	} else {
-		// 根据地址类型生成地址
-		addressType = strings.ToLower(fromType)
-
-		switch addressType {
-		case "p2pkh":
-			senderAddress, err = createP2PKHAddress(pubKey, params)
-		case "p2wpkh":
-			senderAddress, err = createP2WPKHAddress(pubKey, params)
-		case "p2tr":
-			senderAddress, err = createP2TRAddress(pubKey, params)
-		default:
-			return fmt.Errorf("unsupported address type: %s", fromType)
-		}
-
-		if err != nil {
-			return fmt.Errorf("failed to generate %s address: %v", fromType, err)
-		}
+		fmt.Printf("%d. \033[1;32m%s\033[0m [%s]\n", i+1, account.Address, accountType)
 	}
 
-	// Default change address to sender address if not specified
-	if changeAddress == "" {
-		changeAddress = senderAddress
+	// Let user select an address
+	var selectedIdx int
+	for {
+		fmt.Print("\nSelect an address to send from (enter number): ")
+		var idxStr string
+		fmt.Scanln(&idxStr)
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil || idx < 1 || idx > len(wallet.Accounts) {
+			fmt.Println("Invalid selection. Please try again.")
+			continue
+		}
+		selectedIdx = idx - 1
+		break
 	}
 
-	// Handle UTXOs - either from command line or fetch them
-	var selectedUTXOs []util.APIUtxo
-	var totalInputValue btcutil.Amount
+	selectedAccount := wallet.Accounts[selectedIdx]
+	fmt.Printf("Selected address: \033[1;32m%s\033[0m\n", selectedAccount.Address)
 
-	if utxoStr != "" {
-		// Parse UTXOs from command line
-		manualUtxos, err := parseUTXOs(utxoStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse UTXOs: %v", err)
-		}
+	// Show additional account information
+	fmt.Printf("Account type: \033[1;36m%s\033[0m\n", selectedAccount.Type)
 
-		// Convert manual UTXOs to APIUtxo format
-		for _, utxo := range manualUtxos {
-			apiUtxo := util.APIUtxo{
-				Txid:  utxo.TxID,
-				Vout:  utxo.Vout,
-				Value: utxo.Amount,
-				Status: struct {
-					Confirmed   bool   `json:"confirmed"`
-					BlockHeight uint64 `json:"block_height,omitempty"`
-				}{
-					Confirmed: true, // Assume manual UTXOs are confirmed
-				},
-			}
-			selectedUTXOs = append(selectedUTXOs, apiUtxo)
-		}
-	} else if !encodeOnly {
-		// Fetch UTXOs using the util function
-		fetchedUTXOs, err := util.FetchUTXOs(senderAddress, nodeURL, wallet.TestNet)
-		if err != nil {
-			return fmt.Errorf("failed to fetch UTXOs: %v", err)
-		}
-		selectedUTXOs = fetchedUTXOs
+	// 验证选择的账户包含必要的派生路径
+	if selectedAccount.DerivationPath == "" && selectedAccount.HDPath == "" {
+		return fmt.Errorf("\033[1;31mError: Selected account does not have a derivation path.\033[0m\nThis wallet cannot be used for transactions until a proper derivation path is added.")
 	}
 
-	// Determine fee rate - either user-set or from recommendation API
-	var feeRate uint64
-	if userSetFeeRate > 0 {
-		// Use the user-specified fee rate
-		feeRate = userSetFeeRate
-		fmt.Printf("Using user-specified fee rate: %d sat/byte\n", feeRate)
-	} else {
-		// Convert string preference to FeePreference type
-		var feePreference util.FeePreference
-		switch strings.ToLower(feePreferenceStr) {
+	// 显示派生路径
+	derivationPath := selectedAccount.DerivationPath
+	if derivationPath == "" {
+		derivationPath = selectedAccount.HDPath
+	}
+	fmt.Printf("Derivation path: \033[1;36m%s\033[0m\n", derivationPath)
+
+	// Safety check for P2SH-P2WPKH accounts - verify redeem script is present
+	if (selectedAccount.Type == "p2sh-p2wpkh" || selectedAccount.Type == "nested-segwit") && selectedAccount.RedeemScript == "" {
+		return fmt.Errorf("\033[1;31mError: Missing redeem script for P2SH-P2WPKH account.\033[0m\nThis wallet cannot be used for transactions until the redeem script is added to the wallet file.")
+	}
+
+	// Safety check for P2TR accounts - verify internal pubkey is present
+	if (selectedAccount.Type == "p2tr" || selectedAccount.Type == "taproot") && selectedAccount.InternalPubKey == "" {
+		return fmt.Errorf("\033[1;31mError: Missing internal pubkey for Taproot account.\033[0m\nThis wallet cannot be used for transactions until the internal pubkey is added to the wallet file.")
+	}
+
+	if selectedAccount.Type == "p2sh-p2wpkh" && selectedAccount.RedeemScript != "" {
+		fmt.Printf("Redeem script: %s\n", selectedAccount.RedeemScript)
+	}
+
+	if (selectedAccount.Type == "p2tr" || selectedAccount.Type == "taproot") && selectedAccount.InternalPubKey != "" {
+		fmt.Printf("Internal pubkey: %s\n", selectedAccount.InternalPubKey)
+	}
+
+	// Parse amount
+	amountSat, err := parseAmount(amountStr)
+	if err != nil {
+		return fmt.Errorf("invalid amount: %v", err)
+	}
+	fmt.Printf("\nAmount to send: \033[1;33m%.8f BTC\033[0m (%s)\n", float64(amountSat)/100000000, formatSatoshis(amountSat))
+
+	// Verify destination address
+	fmt.Printf("Sending to: \033[1;32m%s\033[0m\n", toAddress)
+
+	// Get UTXOs for the selected address
+	fmt.Printf("\nFetching UTXOs for address %s...\n", selectedAccount.Address)
+	utxos, err := util.FetchUTXOsWithOptions(selectedAccount.Address, apiURL, params == &chaincfg.TestNet3Params, true)
+	if err != nil {
+		return fmt.Errorf("error fetching UTXOs: %v", err)
+	}
+
+	if len(utxos) == 0 {
+		return fmt.Errorf("no UTXOs found for address %s", selectedAccount.Address)
+	}
+
+	fmt.Printf("Found %d UTXOs for address %s\n", len(utxos), selectedAccount.Address)
+
+	// Display balance information
+	totalBalance := uint64(0)
+	for _, utxo := range utxos {
+		totalBalance += utxo.Value
+	}
+	fmt.Printf("Total balance: \033[1;33m%.8f BTC\033[0m (%s)\n",
+		float64(totalBalance)/100000000, formatSatoshis(totalBalance))
+
+	// Get the appropriate fee rate
+	if feeRate == 0 {
+		// Convert string preference to enum
+		var prefEnum util.FeePreference
+		switch strings.ToLower(feePreference) {
 		case "fastest":
-			feePreference = util.FeeFastest
+			prefEnum = util.FeeFastest
 		case "fast":
-			feePreference = util.FeeFast
-		case "normal", "standard":
-			feePreference = util.FeeNormal
-		case "economic", "economy":
-			feePreference = util.FeeEconomic
-		case "minimum", "min":
-			feePreference = util.FeeMinimum
+			prefEnum = util.FeeFast
+		case "normal":
+			prefEnum = util.FeeNormal
+		case "economic":
+			prefEnum = util.FeeEconomic
+		case "minimum":
+			prefEnum = util.FeeMinimum
 		default:
-			feePreference = util.FeeNormal
+			prefEnum = util.FeeNormal
 		}
 
-		// Get recommended fee rate
-		var err error
-		feeRate, err = util.GetRecommendedFeeRate(feePreference, nodeURL, wallet.TestNet)
+		feeRate, err = util.GetRecommendedFeeRate(prefEnum, apiURL, params == &chaincfg.TestNet3Params)
 		if err != nil {
-			return fmt.Errorf("failed to get recommended fee rate: %v", err)
-		}
-		fmt.Printf("Using recommended fee rate (%s): %d sat/byte\n", feePreferenceStr, feeRate)
-	}
-
-	// Use the CreateUTXOsWithOptions function to perform coin selection
-	options := util.UTXOSelectionOptions{
-		UTXOs:              selectedUTXOs,
-		Amount:             amountInSatoshis,
-		FeeLimit:           feeRate * 1000, // Reasonable fee limit based on rate
-		FeeRate:            feeRate,
-		ConfirmedOnly:      true, // Only use confirmed UTXOs for safety
-		DestinationAddress: toAddress,
-		ChangeAddress:      changeAddress,
-		UseTestnet:         wallet.TestNet,
-	}
-
-	coinSelection, err := util.CreateUTXOsWithOptions(options)
-	if err != nil {
-		return fmt.Errorf("failed to select UTXOs: %v", err)
-	}
-
-	// Convert selected UTXOs to inputs for signing
-	var inputs []*wire.TxIn
-	var inputValues []btcutil.Amount
-	var inputScripts [][]byte
-
-	for _, utxo := range coinSelection.SelectedUTXOs {
-		txHash, err := chainhash.NewHashFromStr(utxo.Txid)
-		if err != nil {
-			return fmt.Errorf("invalid transaction hash: %v", err)
+			return fmt.Errorf("error getting fee rate: %v", err)
 		}
 
-		outPoint := wire.NewOutPoint(txHash, utxo.Vout)
-		txIn := wire.NewTxIn(outPoint, nil, nil)
-		inputs = append(inputs, txIn)
-		inputValues = append(inputValues, btcutil.Amount(utxo.Value))
-		inputScripts = append(inputScripts, []byte{}) // Placeholder for signing
+		fmt.Printf("Using recommended fee rate (%s): \033[1;36m%d sat/byte\033[0m\n",
+			feePreference, feeRate)
+	} else {
+		fmt.Printf("Using custom fee rate: \033[1;36m%d sat/byte\033[0m\n", feeRate)
 	}
 
-	totalInputValue = btcutil.Amount(coinSelection.TotalSelected)
-
-	// Create InputSource function for txauthor - now uses the pre-selected UTXOs
-	inputSource := func(target btcutil.Amount) (btcutil.Amount, []*wire.TxIn, []btcutil.Amount, [][]byte, error) {
-		return totalInputValue, inputs, inputValues, inputScripts, nil
-	}
-
-	// Create ChangeSource function for txauthor
-	changeAddr, err := btcutil.DecodeAddress(changeAddress, params)
+	// Prepare private key for signing
+	privateKey, err := derivePrivateKeyForAccount(seed, selectedAccount, params)
 	if err != nil {
-		return fmt.Errorf("invalid change address: %v", err)
+		return fmt.Errorf("error deriving private key: %v", err)
 	}
 
-	// Convert our change source to a txauthor.ChangeSource
-	changeSourceFunc := txauthor.ChangeSource{
-		NewScript: func() ([]byte, error) {
-			return txscript.PayToAddrScript(changeAddr)
-		},
-		ScriptSize: txsizes.P2PKHPkScriptSize,
+	// Calculate maximum fee we're willing to pay (10% of amount by default, min 1000 sats)
+	maxFeeLimit := amountSat / 10
+	if maxFeeLimit < 1000 {
+		maxFeeLimit = 1000 // Minimum 1000 satoshis
 	}
 
-	// Create transaction using txauthor
-	authoredTx, err := txauthor.NewUnsignedTransaction(
-		[]*wire.TxOut{
-			{
-				Value: int64(amountInSatoshis),
-				PkScript: func() []byte {
-					destAddr, err := btcutil.DecodeAddress(toAddress, params)
-					if err != nil {
-						return nil
-					}
-					script, err := txscript.PayToAddrScript(destAddr)
-					if err != nil {
-						return nil
-					}
-					return script
-				}(),
-			},
-		},
-		btcutil.Amount(feeRate*1000),
-		inputSource,
-		&changeSourceFunc,
+	// Select UTXOs for transaction
+	fmt.Println("\nSelecting optimal UTXOs for transaction...")
+	utxoResult, err := util.CreateUTXOsWithChangeAddr(
+		utxos,
+		amountSat,
+		maxFeeLimit,
+		feeRate,
+		false, // Use both confirmed and unconfirmed UTXOs
+		toAddress,
+		selectedAccount.Address, // Send change back to sender
+		params == &chaincfg.TestNet3Params,
 	)
+
 	if err != nil {
-		return fmt.Errorf("failed to create transaction: %v", err)
+		return fmt.Errorf("error selecting UTXOs: %v", err)
 	}
 
-	// Calculate estimated transaction size
-	estimatedTxSize := authoredTx.Tx.SerializeSize()
-	if len(authoredTx.Tx.TxIn) > 0 && len(authoredTx.Tx.TxIn[0].Witness) > 0 {
-		// For segwit transactions, calculate the virtual size
-		// Weight = (base size * 3) + total size
-		// vSize = (weight + 3) / 4
-		baseSize := authoredTx.Tx.SerializeSizeStripped()
-		totalSize := authoredTx.Tx.SerializeSize()
-		weight := baseSize*3 + totalSize
-		estimatedTxSize = (weight + 3) / 4
+	// Display fee information
+	fmt.Printf("\n\033[1;36mTransaction Details:\033[0m\n")
+	fmt.Printf("From: \033[1;32m%s\033[0m\n", selectedAccount.Address)
+	fmt.Printf("To: \033[1;32m%s\033[0m\n", toAddress)
+	fmt.Printf("Amount: \033[1;33m%.8f BTC\033[0m (%s)\n",
+		float64(amountSat)/100000000, formatSatoshis(amountSat))
+	fmt.Printf("Fee: \033[1;33m%.8f BTC\033[0m (%s)\n",
+		float64(utxoResult.Fee)/100000000, formatSatoshis(utxoResult.Fee))
+	fmt.Printf("Fee Rate: \033[1;36m%d sat/byte\033[0m\n", feeRate)
+
+	// Calculate effective fee percentage
+	if amountSat > 0 {
+		feePercent := float64(utxoResult.Fee) / float64(amountSat) * 100
+		fmt.Printf("Fee percentage: \033[1;36m%.2f%%\033[0m of amount\n", feePercent)
 	}
 
-	// If fee only, just display and exit
-	if feeOnly {
-		fee := authoredTx.TotalInput - txauthor.SumOutputValues(authoredTx.Tx.TxOut)
-		fmt.Printf("Estimated Fee: %.8f BTC (%d satoshis)\n", float64(fee)/100000000.0, fee)
-		fmt.Printf("Fee Rate: %d sat/byte (%.1f sat/kB)\n", feeRate, float64(feeRate*1000))
-		fmt.Printf("Estimated Transaction Size: %d bytes\n", estimatedTxSize)
-		return nil
+	if utxoResult.Change > 0 {
+		fmt.Printf("Change: \033[1;33m%.8f BTC\033[0m (%s) returned to sender\n",
+			float64(utxoResult.Change)/100000000, formatSatoshis(utxoResult.Change))
 	}
 
-	// Create a SecretSource for signing
-	secretSource := &transferSecretKeySource{
-		privateKey:  privateKey,
-		fromType:    addressType,
-		chainParams: params,
-	}
+	// Display selected UTXOs
+	fmt.Printf("\n\033[1;36mSelected UTXOs:\033[0m\n")
+	for i, utxo := range utxoResult.SelectedUTXOs {
+		fmt.Printf("%d. %s:%d - \033[1;33m%.8f BTC\033[0m (%s)\n",
+			i+1, utxo.Txid, utxo.Vout,
+			float64(utxo.Value)/100000000, formatSatoshis(utxo.Value))
 
-	// Sign the transaction
-	err = authoredTx.AddAllInputScripts(secretSource)
-	if err != nil {
-		return fmt.Errorf("failed to sign transaction: %v", err)
-	}
-
-	// Serialize transaction
-	var signedTx bytes.Buffer
-	authoredTx.Tx.Serialize(&signedTx)
-	txHex := hex.EncodeToString(signedTx.Bytes())
-
-	// If encode only, just display the raw transaction and exit
-	if encodeOnly {
-		fmt.Printf("Raw Transaction: %s\n", txHex)
-		return nil
-	}
-
-	// Display transaction details for confirmation
-	if !autoConfirm {
-		fmt.Println("Transaction Details:")
-		fmt.Printf("From: %s\n", senderAddress)
-		fmt.Printf("To: %s\n", toAddress)
-		fmt.Printf("Amount: %.8f BTC (%d satoshis)\n", float64(amountInSatoshis)/100000000.0, amountInSatoshis)
-
-		// Calculate fee
-		fee := authoredTx.TotalInput - txauthor.SumOutputValues(authoredTx.Tx.TxOut)
-		fmt.Printf("Fee: %.8f BTC (%d satoshis @ %d sat/byte)\n", float64(fee)/100000000.0, fee, feeRate)
-
-		// Display change output if any
-		if len(authoredTx.Tx.TxOut) > 1 {
-			changeValue := authoredTx.Tx.TxOut[len(authoredTx.Tx.TxOut)-1].Value
-			fmt.Printf("Change: %.8f BTC (%d satoshis) to %s\n", float64(changeValue)/100000000.0, changeValue, changeAddress)
+		// Show confirmation status
+		if utxo.Status.Confirmed {
+			fmt.Printf("   \033[1;32m✓ Confirmed\033[0m (Block height: %d)\n", utxo.Status.BlockHeight)
+		} else {
+			fmt.Printf("   \033[1;33m⟳ Unconfirmed\033[0m\n")
 		}
+	}
 
-		fmt.Printf("Transaction Size: ~%d bytes\n", estimatedTxSize)
-		fmt.Printf("Raw Transaction: %s\n", txHex)
+	// If fee-only, stop here
+	if feeOnly {
+		fmt.Println("\nFee estimation complete. Use --fee-only=false to create and broadcast transaction.")
+		return nil
+	}
 
-		// Ask for confirmation
-		fmt.Print("Confirm transaction? (y/N): ")
-		var response string
-		fmt.Scanln(&response)
-		if !strings.EqualFold(response, "y") {
+	// Create and sign transaction
+	fmt.Println("\nCreating and signing transaction...")
+	signedTx, err := createAndSignTransaction(privateKey, utxoResult, toAddress, selectedAccount.Address, amountSat, params, selectedAccount)
+	if err != nil {
+		return fmt.Errorf("error creating transaction: %v", err)
+	}
+
+	// Calculate transaction size and real fee rate
+	var txBuf bytes.Buffer
+	signedTx.Serialize(&txBuf)
+	txSize := txBuf.Len()
+	txWeight := signedTx.SerializeSizeStripped()*3 + txSize // vSize calculation
+	vSize := (txWeight + 3) / 4                             // Round up
+	realFeeRate := float64(utxoResult.Fee) / float64(vSize)
+
+	fmt.Printf("\nTransaction size: \033[1;36m%d bytes\033[0m (weight: %d, vsize: %d)\n",
+		txSize, txWeight, vSize)
+	fmt.Printf("Actual fee rate: \033[1;36m%.2f sat/byte\033[0m\n", realFeeRate)
+
+	// Serialize transaction for broadcasting
+	var signedTxHex string
+	if signedTx != nil {
+		var buf strings.Builder
+		err = signedTx.Serialize(&hexWriter{&buf})
+		if err != nil {
+			return fmt.Errorf("error serializing transaction: %v", err)
+		}
+		signedTxHex = buf.String()
+	}
+
+	// Display raw transaction hex
+	if dryRun {
+		fmt.Printf("\nRaw Transaction (hex):\n\033[0;37m%s\033[0m\n", signedTxHex)
+		fmt.Println("\nDry run complete. Use --dry-run=false to broadcast transaction.")
+		return nil
+	}
+
+	// Ask for confirmation before broadcasting
+	if !autoConfirm {
+		fmt.Print("\n\033[1;31mDo you want to broadcast this transaction? (y/n): \033[0m")
+		var confirmation string
+		fmt.Scanln(&confirmation)
+		if strings.ToLower(confirmation) != "y" && strings.ToLower(confirmation) != "yes" {
 			fmt.Println("Transaction cancelled.")
 			return nil
 		}
 	}
 
-	// For now, just output the transaction hex
-	fmt.Printf("Signed Transaction Hex: %s\n", txHex)
+	// Broadcast transaction
+	fmt.Println("\nBroadcasting transaction...")
+	txid, err := util.BroadcastRawTransaction(signedTxHex, apiURL, params == &chaincfg.TestNet3Params)
+	if err != nil {
+		return fmt.Errorf("error broadcasting transaction: %v", err)
+	}
 
-	// Broadcast the transaction if not encode-only
-	if !encodeOnly {
-		fmt.Println("Broadcasting transaction...")
-		// Use the BroadcastTransaction utility function
-		txid, err := util.BroadcastRawTransaction(txHex, nodeURL, wallet.TestNet)
-		if err != nil {
-			fmt.Printf("Error broadcasting transaction: %v\n", err)
-			fmt.Println("You can manually broadcast the transaction hex above.")
-			return nil
-		}
-		fmt.Printf("Transaction successfully broadcast!\n")
-		fmt.Printf("Transaction ID: %s\n", txid)
+	fmt.Printf("\n\033[1;32m✅ Transaction successfully broadcast!\033[0m\n")
+	fmt.Printf("Transaction ID: \033[1;36m%s\033[0m\n", txid)
 
-		// Construct a blockchain explorer URL for the transaction
-		var explorerURL string
-		if wallet.TestNet {
-			explorerURL = fmt.Sprintf("https://mempool.space/testnet/tx/%s", txid)
-		} else {
-			explorerURL = fmt.Sprintf("https://mempool.space/tx/%s", txid)
-		}
-		fmt.Printf("Track your transaction: %s\n", explorerURL)
+	// Display transaction explorer link if available
+	if params == &chaincfg.TestNet3Params {
+		fmt.Printf("Track your transaction: https://mempool.space/testnet/tx/%s\n", txid)
+	} else {
+		fmt.Printf("Track your transaction: https://mempool.space/tx/%s\n", txid)
 	}
 
 	return nil
 }
 
-// transferSecretKeySource implements the txauthor.SecretsSource interface
-type transferSecretKeySource struct {
-	privateKey  *btcec.PrivateKey
-	fromType    string
-	chainParams *chaincfg.Params
-}
+// formatSatoshis formats a satoshi amount with thousands separators
+func formatSatoshis(amount uint64) string {
+	// Convert to string
+	amountStr := strconv.FormatUint(amount, 10)
 
-// GetKey returns the private key for a given address
-func (s *transferSecretKeySource) GetKey(addr btcutil.Address) (*btcec.PrivateKey, bool, error) {
-	// In our simple implementation, we just return the same private key for all addresses
-	// In a real wallet, you would look up the key by address
-	return s.privateKey, true, nil
-}
-
-// GetScript returns the redeem script for a given address
-func (s *transferSecretKeySource) GetScript(addr btcutil.Address) ([]byte, error) {
-	// We don't support redeem scripts in this simple implementation
-	return nil, nil
-}
-
-// ChainParams returns the chain parameters for this source
-func (s *transferSecretKeySource) ChainParams() *chaincfg.Params {
-	return s.chainParams
-}
-
-// parseUTXOs parses a comma-separated list of UTXOs
-// Format: txid:vout:amount (amount in satoshis)
-func parseUTXOs(utxoStr string) ([]UTXO, error) {
-	var utxos []UTXO
-
-	parts := strings.Split(utxoStr, ",")
-	for _, part := range parts {
-		fields := strings.Split(strings.TrimSpace(part), ":")
-		if len(fields) != 3 {
-			return nil, fmt.Errorf("invalid UTXO format, expected txid:vout:amount")
+	// Add thousands separators
+	var result strings.Builder
+	for i, c := range amountStr {
+		if i > 0 && (len(amountStr)-i)%3 == 0 {
+			result.WriteRune(',')
 		}
+		result.WriteRune(c)
+	}
 
-		vout, err := strconv.ParseUint(fields[1], 10, 32)
+	return result.String() + " sats"
+}
+
+// hexWriter implements an io.Writer that converts bytes to hex
+type hexWriter struct {
+	w io.Writer
+}
+
+func (hw *hexWriter) Write(p []byte) (n int, err error) {
+	for _, b := range p {
+		_, err = fmt.Fprintf(hw.w, "%02x", b)
 		if err != nil {
-			return nil, fmt.Errorf("invalid vout: %v", err)
+			return n, err
 		}
+		n++
+	}
+	return n, nil
+}
 
-		amount, err := strconv.ParseUint(fields[2], 10, 64)
+// parseAmount parses an amount string into satoshis with high precision
+func parseAmount(amount string) (uint64, error) {
+	amount = strings.ToLower(strings.TrimSpace(amount))
+
+	if strings.HasSuffix(amount, "btc") {
+		// Remove the btc suffix
+		btcAmount := strings.TrimSuffix(amount, "btc")
+		return parseBtcToSatoshis(btcAmount)
+	} else if strings.HasSuffix(amount, "sat") {
+		// Direct satoshi amount
+		satAmount := strings.TrimSuffix(amount, "sat")
+		sat, err := strconv.ParseUint(satAmount, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid amount: %v", err)
+			return 0, fmt.Errorf("invalid satoshi amount: %v", err)
+		}
+		return sat, nil
+	} else {
+		// Assume it's BTC format without suffix
+		return parseBtcToSatoshis(amount)
+	}
+}
+
+// parseBtcToSatoshis converts a BTC amount string to satoshis with high precision
+func parseBtcToSatoshis(btcAmount string) (uint64, error) {
+	// Split into whole and fractional parts
+	parts := strings.Split(btcAmount, ".")
+
+	if len(parts) > 2 {
+		return 0, fmt.Errorf("invalid BTC amount format: %s", btcAmount)
+	}
+
+	var wholePart, fractionalPart uint64
+	var err error
+
+	// Parse the whole part
+	if parts[0] != "" {
+		wholePart, err = strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid whole part of BTC amount: %v", err)
+		}
+		// Convert whole BTC to satoshis (1 BTC = 100,000,000 satoshis)
+		wholePart *= 100000000
+	}
+
+	// Parse the fractional part if it exists
+	if len(parts) == 2 && parts[1] != "" {
+		// Pad with zeros to 8 decimal places if needed
+		fractionalStr := parts[1]
+		if len(fractionalStr) > 8 {
+			return 0, fmt.Errorf("BTC amount has too many decimal places (max 8): %s", btcAmount)
 		}
 
-		utxos = append(utxos, UTXO{
-			TxID:   fields[0],
-			Vout:   uint32(vout),
-			Amount: amount,
-		})
-	}
+		fractionalStr = fractionalStr + strings.Repeat("0", 8-len(fractionalStr))
 
-	return utxos, nil
-}
-
-// createP2PKHAddress generates a P2PKH address from a public key
-func createP2PKHAddress(pubKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
-	pubKeyHash := btcutil.Hash160(pubKey.SerializeCompressed())
-	addr, err := btcutil.NewAddressPubKeyHash(pubKeyHash, params)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
-}
-
-// createP2WPKHAddress generates a P2WPKH address from a public key
-func createP2WPKHAddress(pubKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
-	pubKeyHash := btcutil.Hash160(pubKey.SerializeCompressed())
-	addr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, params)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
-}
-
-// createP2TRAddress generates a P2TR address from a public key
-func createP2TRAddress(pubKey *btcec.PublicKey, params *chaincfg.Params) (string, error) {
-	// For P2TR, we would normally create a taproot output key
-	// This is a simplified implementation
-	addr, err := btcutil.NewAddressTaproot(schnorrKey(pubKey), params)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
-}
-
-// schnorrKey generates a taproot key from a public key
-// This is a simplified implementation
-func schnorrKey(pubKey *btcec.PublicKey) []byte {
-	// In a real implementation, this would properly create a taproot key
-	// For now, just use the x-coordinate of the public key with a taproot prefix
-	pubBytes := pubKey.SerializeCompressed()
-
-	// Return x-coordinate with proper prefix
-	return append([]byte{0x02}, pubBytes[1:33]...)
-}
-
-// Helper function to convert string to uint32
-func parseUint32(s string) (uint32, error) {
-	var i uint32
-	_, err := fmt.Sscanf(s, "%d", &i)
-	return i, err
-}
-
-// parseBitcoinAmount parses Bitcoin amount with units (e.g., "1.0btc", "10000sat")
-func parseBitcoinAmount(amount string) (uint64, error) {
-	amount = strings.TrimSpace(amount)
-	if amount == "" {
-		return 0, fmt.Errorf("amount cannot be empty")
-	}
-
-	// Default unit is BTC if no unit specified
-	unit := "btc"
-	value := amount
-
-	// Check for unit in the string
-	lowerAmount := strings.ToLower(amount)
-	for _, u := range []string{"btc", "mbtc", "ubtc", "sat", "sats", "satoshi", "satoshis"} {
-		if strings.HasSuffix(lowerAmount, u) {
-			unit = u
-			value = strings.TrimSuffix(amount, u)
-			value = strings.TrimSpace(value)
-			break
+		// Now we can safely parse as an integer
+		fractionalPart, err = strconv.ParseUint(fractionalStr, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid fractional part of BTC amount: %v", err)
 		}
 	}
 
-	// Parse the decimal value
-	floatVal, ok := new(big.Float).SetString(value)
-	if !ok {
-		return 0, fmt.Errorf("invalid amount format: %s", amount)
+	// Sum the components
+	totalSatoshis := wholePart + fractionalPart
+
+	return totalSatoshis, nil
+}
+
+// derivePrivateKeyForAccount derives the private key for a specific account
+func derivePrivateKeyForAccount(seed []byte, account AccountInfo, params *chaincfg.Params) (*btcec.PrivateKey, error) {
+	// Create a master key from the seed using the correct network parameters
+	masterKey, err := hdkeychain.NewMaster(seed, params)
+	if err != nil {
+		return nil, fmt.Errorf("error creating master key: %v", err)
 	}
 
-	// Convert to satoshis based on unit
-	var multiplier float64
-	switch unit {
-	case "btc", "bitcoin":
-		multiplier = 100000000 // 1 BTC = 10^8 satoshis
-	case "mbtc", "millibtc":
-		multiplier = 100000 // 1 mBTC = 10^5 satoshis
-	case "ubtc", "microbtc":
-		multiplier = 100 // 1 μBTC = 10^2 satoshis
-	case "sat", "sats", "satoshi", "satoshis":
-		multiplier = 1 // 1 satoshi
-	default:
-		return 0, fmt.Errorf("unsupported unit: %s", unit)
+	// If the account has a derivation path, use it to derive the key
+	if account.DerivationPath != "" {
+		// Derive key from the path
+		key, err := DeriveKeyFromPath(masterKey, account.DerivationPath)
+		if err != nil {
+			return nil, fmt.Errorf("error deriving key from path: %v", err)
+		}
+
+		// Extract the private key
+		ecPrivKey, err := key.ECPrivKey()
+		if err != nil {
+			return nil, fmt.Errorf("error getting private key: %v", err)
+		}
+
+		// Convert to btcec.PrivateKey
+		return ecPrivKey, nil
+	} else if account.HDPath != "" {
+		// Use HDPath if DerivationPath is not available
+		key, err := DeriveKeyFromPath(masterKey, account.HDPath)
+		if err != nil {
+			return nil, fmt.Errorf("error deriving key from HD path: %v", err)
+		}
+
+		// Extract the private key
+		ecPrivKey, err := key.ECPrivKey()
+		if err != nil {
+			return nil, fmt.Errorf("error getting private key: %v", err)
+		}
+
+		// Convert to btcec.PrivateKey
+		return ecPrivKey, nil
 	}
 
-	// Extract the float value
-	floatAmount, _ := floatVal.Float64()
-
-	// Convert to satoshis
-	satoshis := uint64(math.Round(floatAmount * multiplier))
-
-	return satoshis, nil
+	// 不再支持没有明确派生路径的钱包
+	return nil, fmt.Errorf("missing derivation path in wallet account: either DerivationPath or HDPath must be specified")
 }
 
-// initBitcoinRPCConfig reads Bitcoin RPC configuration
-func initBitcoinRPCConfig() (string, error) {
-	// Read from config file
-	// Look for the btc.rpc key in config
-	rpcURL := viper.GetString("rpc")
-	if rpcURL == "" {
-		// Instead of returning an error, return empty string to indicate
-		// that we should use default APIs from constants.go
-		return "", nil
+// createAndSignTransaction creates and signs a Bitcoin transaction
+func createAndSignTransaction(
+	privateKey *btcec.PrivateKey,
+	utxoResult *util.CoinSelectionResult,
+	toAddress string,
+	fromAddress string,
+	amount uint64,
+	params *chaincfg.Params,
+	selectedAccount AccountInfo,
+) (*wire.MsgTx, error) {
+	// Create a new transaction
+	tx := wire.NewMsgTx(wire.TxVersion)
+
+	// Map to store UTXO information for signing
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut)
+
+	// Add inputs
+	for _, utxo := range utxoResult.SelectedUTXOs {
+		txHash, err := chainhash.NewHashFromStr(utxo.Txid)
+		if err != nil {
+			return nil, fmt.Errorf("invalid transaction hash: %v", err)
+		}
+
+		outPoint := wire.NewOutPoint(txHash, utxo.Vout)
+		txIn := wire.NewTxIn(outPoint, nil, nil)
+
+		// Set sequence to enable RBF (Replace-By-Fee) by default
+		// This allows the transaction to be replaced with higher fee version if needed
+		txIn.Sequence = 0xFFFFFFFD
+
+		tx.AddTxIn(txIn)
+
+		// Store UTXO info for later signing
+		pkScript := utxo.PkScriptBytes
+		if len(pkScript) == 0 && utxo.PkScript != "" {
+			var decodeErr error
+			pkScript, decodeErr = hex.DecodeString(utxo.PkScript)
+			if decodeErr != nil {
+				return nil, fmt.Errorf("error decoding script for input: %v", decodeErr)
+			}
+		}
+
+		// Store previous output information for the sighash calculation
+		prevOuts[*outPoint] = wire.NewTxOut(int64(utxo.Value), pkScript)
 	}
-	return rpcURL, nil
-}
 
-// broadcastTransaction sends the raw transaction to the Bitcoin network
-// This is kept for backward compatibility but should use util.BroadcastTransaction instead
-func broadcastTransaction(txHex string, isTestnet bool) (string, error) {
-	return util.BroadcastRawTransaction(txHex, "", isTestnet)
-}
+	// Add output - payment to recipient
+	destAddr, err := btcutil.DecodeAddress(toAddress, params)
+	if err != nil {
+		return nil, fmt.Errorf("invalid destination address: %v", err)
+	}
 
-// BitcoinRPCRequest represents a JSON-RPC request to a Bitcoin node
-type BitcoinRPCRequest struct {
-	JSONRPCVersion string        `json:"jsonrpc"`
-	ID             string        `json:"id"`
-	Method         string        `json:"method"`
-	Params         []interface{} `json:"params"`
-}
+	destScript, err := txscript.PayToAddrScript(destAddr)
+	if err != nil {
+		return nil, fmt.Errorf("error creating output script: %v", err)
+	}
 
-// BitcoinRPCResponse represents a JSON-RPC response from a Bitcoin node
-type BitcoinRPCResponse struct {
-	JSONRPCVersion string          `json:"jsonrpc"`
-	ID             string          `json:"id"`
-	Result         json.RawMessage `json:"result"`
-	Error          *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
+	tx.AddTxOut(wire.NewTxOut(int64(amount), destScript))
 
-// UnspentOutput represents an unspent transaction output from the Bitcoin node
-type UnspentOutput struct {
-	TxID          string  `json:"txid"`
-	Vout          uint32  `json:"vout"`
-	Address       string  `json:"address"`
-	ScriptPubKey  string  `json:"scriptPubKey"`
-	Amount        float64 `json:"amount"`
-	Confirmations int     `json:"confirmations"`
-	Spendable     bool    `json:"spendable"`
-	Solvable      bool    `json:"solvable"`
-	Safe          bool    `json:"safe"`
+	// Add change output if needed
+	if utxoResult.Change > 0 {
+		changeAddr, err := btcutil.DecodeAddress(fromAddress, params)
+		if err != nil {
+			return nil, fmt.Errorf("invalid change address: %v", err)
+		}
+
+		changeScript, err := txscript.PayToAddrScript(changeAddr)
+		if err != nil {
+			return nil, fmt.Errorf("error creating change script: %v", err)
+		}
+
+		tx.AddTxOut(wire.NewTxOut(int64(utxoResult.Change), changeScript))
+	}
+
+	// Create the previous output fetcher for sighash calculation
+	prevOutFetcher := txscript.NewMultiPrevOutFetcher(prevOuts)
+
+	// Prepare scripts based on account type
+	var redeemScript []byte
+	var taprootInternalKey []byte
+
+	// Based on the account type, prepare necessary scripts
+	switch selectedAccount.Type {
+	case "p2sh-p2wpkh", "nested-segwit":
+		// Decode redeem script from account if available
+		if selectedAccount.RedeemScript != "" {
+			var err error
+			redeemScript, err = hex.DecodeString(selectedAccount.RedeemScript)
+			if err != nil {
+				return nil, fmt.Errorf("error decoding redeem script from account: %v", err)
+			}
+		} else {
+			// No fallback - require the redeem script to be present in the wallet
+			return nil, fmt.Errorf("missing redeem script for P2SH-P2WPKH account - redeem script must be provided in the wallet file")
+		}
+	case "p2tr", "taproot":
+		// For Taproot, decode the internal pubkey if available
+		if selectedAccount.InternalPubKey != "" {
+			var err error
+			taprootInternalKey, err = hex.DecodeString(selectedAccount.InternalPubKey)
+			if err != nil {
+				return nil, fmt.Errorf("error decoding Taproot internal key: %v", err)
+			}
+			// Validate the key is 32 bytes
+			if len(taprootInternalKey) != 32 {
+				return nil, fmt.Errorf("invalid Taproot internal key length: %d (expected 32)", len(taprootInternalKey))
+			}
+		}
+	}
+
+	// Sign each input
+	for i, utxo := range utxoResult.SelectedUTXOs {
+		// Decode script from UTXO
+		pkScript := utxo.PkScriptBytes
+		if len(pkScript) == 0 && utxo.PkScript != "" {
+			var err error
+			pkScript, err = hex.DecodeString(utxo.PkScript)
+			if err != nil {
+				return nil, fmt.Errorf("error decoding script for input %d: %v", i, err)
+			}
+		}
+
+		// Determine script type to apply appropriate signing method
+		scriptClass := txscript.GetScriptClass(pkScript)
+
+		var sigScript []byte
+		var witnessData [][]byte
+		var err error
+
+		// Handle different script types based on account type and UTXO script class
+		switch {
+		// Native SegWit (P2WPKH)
+		case scriptClass == txscript.WitnessV0PubKeyHashTy && (selectedAccount.Type == "p2wpkh" || selectedAccount.Type == "segwit"):
+			witnessData, err = txscript.WitnessSignature(tx, txscript.NewTxSigHashes(tx, prevOutFetcher),
+				i, int64(utxo.Value), pkScript, txscript.SigHashAll, privateKey, true)
+			if err != nil {
+				return nil, fmt.Errorf("error creating witness signature for input %d: %v", i, err)
+			}
+			tx.TxIn[i].Witness = witnessData
+
+		// Taproot (P2TR)
+		case scriptClass == txscript.WitnessV1TaprootTy && (selectedAccount.Type == "p2tr" || selectedAccount.Type == "taproot"):
+			// For P2TR, we need special signing
+			// Currently, we only support key path spending (not script path)
+
+			// Safety check: Verify the internal key is available for Taproot
+			if taprootInternalKey == nil || len(taprootInternalKey) != 32 {
+				return nil, fmt.Errorf("missing or invalid internal pubkey for Taproot address - this should be stored in the wallet")
+			}
+
+			// Create the signature hash for Taproot input (using SigHashDefault which is equivalent to SIGHASH_ALL in Taproot)
+			sigHash, err := txscript.CalcTaprootSignatureHash(
+				txscript.NewTxSigHashes(tx, prevOutFetcher),
+				txscript.SigHashDefault,
+				tx,
+				i,
+				prevOutFetcher,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("error calculating taproot signature hash for input %d: %v", i, err)
+			}
+
+			// Create Schnorr signature
+			signature, err := schnorr.Sign(privateKey, sigHash)
+			if err != nil {
+				return nil, fmt.Errorf("error creating schnorr signature for input %d: %v", i, err)
+			}
+
+			// Debug log
+			fmt.Printf("  Creating Taproot key path signature for input %d\n", i)
+			fmt.Printf("  Internal pubkey (hex): %x\n", taprootInternalKey)
+
+			// Taproot signatures for key path spending are just a single Schnorr signature in the witness stack
+			tx.TxIn[i].Witness = wire.TxWitness{signature.Serialize()}
+
+		// P2SH-P2WPKH (nested SegWit)
+		case scriptClass == txscript.ScriptHashTy && (selectedAccount.Type == "p2sh-p2wpkh" || selectedAccount.Type == "nested-segwit"):
+			// Extract the script hash from the pkScript
+			if len(pkScript) != 23 || pkScript[0] != txscript.OP_HASH160 || pkScript[22] != txscript.OP_EQUAL || pkScript[1] != 0x14 {
+				return nil, fmt.Errorf("invalid P2SH script format for input %d", i)
+			}
+
+			// Extract the script hash (20 bytes)
+			scriptHash := pkScript[2:22]
+
+			// Verify this is the correct redeem script
+			storedScriptHash := btcutil.Hash160(redeemScript)
+			if !bytes.Equal(scriptHash, storedScriptHash) {
+				return nil, fmt.Errorf("UTXO at input %d is not for the selected account's P2SH address (hash mismatch)", i)
+			}
+
+			// Sign with the redeem script
+			witnessData, err = txscript.WitnessSignature(tx, txscript.NewTxSigHashes(tx, prevOutFetcher),
+				i, int64(utxo.Value), redeemScript, txscript.SigHashAll, privateKey, true)
+			if err != nil {
+				return nil, fmt.Errorf("error creating witness signature for nested SegWit input %d: %v", i, err)
+			}
+			tx.TxIn[i].Witness = witnessData
+
+			// For P2SH-P2WPKH, the signature script must contain just the redeem script
+			sigScript, err = txscript.NewScriptBuilder().AddData(redeemScript).Script()
+			if err != nil {
+				return nil, fmt.Errorf("error creating signature script for input %d: %v", i, err)
+			}
+			tx.TxIn[i].SignatureScript = sigScript
+
+		// Legacy address (P2PKH)
+		case scriptClass == txscript.PubKeyHashTy && (selectedAccount.Type == "p2pkh" || selectedAccount.Type == "legacy"):
+			sigScript, err = txscript.SignatureScript(tx, i, pkScript, txscript.SigHashAll, privateKey, true)
+			if err != nil {
+				return nil, fmt.Errorf("error signing P2PKH input %d: %v", i, err)
+			}
+			tx.TxIn[i].SignatureScript = sigScript
+
+		default:
+			// If script class doesn't match account type, something is wrong
+			return nil, fmt.Errorf("input %d script type (%s) doesn't match account type (%s)",
+				i, scriptClass, selectedAccount.Type)
+		}
+	}
+
+	return tx, nil
 }
