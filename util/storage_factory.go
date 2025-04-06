@@ -19,16 +19,22 @@ type StorageFactory struct{}
 // NewStorage creates a new storage implementation based on the provider
 func (f *StorageFactory) NewStorage(provider string) (Storage, error) {
 	switch provider {
-	case "google":
+	case PROVIDER_GOOGLE:
 		return &GoogleDriveStorage{}, nil
-	case "dropbox":
+	case PROVIDER_DROPBOX:
 		return &DropboxStorage{}, nil
-	case "s3":
+	case PROVIDER_S3:
 		return &S3Storage{}, nil
-	case "box":
+	case PROVIDER_BOX:
 		return &BoxStorage{}, nil
-	case "local":
+	case PROVIDER_LOCAL:
 		return &LocalStorage{}, nil
+	case PROVIDER_KEYCHAIN:
+		// Check if we're on macOS before allowing keychain storage
+		if !IsMacOS() {
+			return nil, fmt.Errorf("keychain storage is only available on macOS")
+		}
+		return &KeychainStorage{}, nil
 	default:
 		// If the provider is not one of the cloud providers, treat it as a local path
 		if isLocalPath(provider) {
