@@ -27,7 +27,7 @@ func (k *KeychainStorage) Put(data []byte, filePath string, withForce bool) (str
 	if !withForce {
 		query := keychain.NewItem()
 		query.SetSecClass(keychain.SecClassGenericPassword)
-		query.SetService("com.ethanzhrepo.btc-cli-vault")
+		query.SetService("ltd.wrb.btc-cli-vault")
 		query.SetAccount(walletName)
 		query.SetMatchLimit(keychain.MatchLimitOne)
 
@@ -42,7 +42,7 @@ func (k *KeychainStorage) Put(data []byte, filePath string, withForce bool) (str
 	// Set up keychain item
 	item := keychain.NewItem()
 	item.SetSecClass(keychain.SecClassGenericPassword)
-	item.SetService("com.ethanzhrepo.btc-cli-vault")
+	item.SetService("ltd.wrb.btc-cli-vault")
 	item.SetAccount(walletName)
 	item.SetData(data)
 	item.SetSynchronizable(keychain.SynchronizableNo)
@@ -51,7 +51,7 @@ func (k *KeychainStorage) Put(data []byte, filePath string, withForce bool) (str
 	// Delete any existing item with the same key
 	deleteItem := keychain.NewItem()
 	deleteItem.SetSecClass(keychain.SecClassGenericPassword)
-	deleteItem.SetService("com.ethanzhrepo.btc-cli-vault")
+	deleteItem.SetService("ltd.wrb.btc-cli-vault")
 	deleteItem.SetAccount(walletName)
 	_ = keychain.DeleteItem(deleteItem)
 
@@ -77,7 +77,7 @@ func (k *KeychainStorage) Get(filePath string) ([]byte, error) {
 	// Set up query
 	query := keychain.NewItem()
 	query.SetSecClass(keychain.SecClassGenericPassword)
-	query.SetService("com.ethanzhrepo.btc-cli-vault")
+	query.SetService("ltd.wrb.btc-cli-vault")
 	query.SetAccount(walletName)
 	query.SetMatchLimit(keychain.MatchLimitOne)
 	query.SetReturnData(true)
@@ -105,7 +105,7 @@ func (k *KeychainStorage) List(dir string) ([]string, error) {
 	// Set up query to find all wallets
 	query := keychain.NewItem()
 	query.SetSecClass(keychain.SecClassGenericPassword)
-	query.SetService("com.ethanzhrepo.btc-cli-vault")
+	query.SetService("ltd.wrb.btc-cli-vault")
 	query.SetMatchLimit(keychain.MatchLimitAll)
 	query.SetReturnAttributes(true)
 

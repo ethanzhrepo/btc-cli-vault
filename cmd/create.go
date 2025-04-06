@@ -103,7 +103,14 @@ func CreateCmd() *cobra.Command {
 				fmt.Println("IMPORTANT: Write these words down on paper and keep them safe!")
 			}
 
-			// 如果需要passphrase，则从用户那里获取
+			// 获取加密密码 (AES) - 移到前面
+			password, err := readPasswordFromConsole()
+			if err != nil {
+				fmt.Printf("\nError: %v\n", err)
+				os.Exit(1)
+			}
+
+			// 如果需要passphrase，则从用户那里获取 - 移到后面
 			var passphrase string
 			if !withPassphrase {
 				fmt.Println("\nPlease enter \033[1;31mBIP39 Passphrase\033[0m for extra security.")
@@ -140,13 +147,6 @@ func CreateCmd() *cobra.Command {
 					fmt.Println("Error: Passphrase is not strong enough. It must be at least 8 characters and include uppercase, lowercase, numbers, and special characters.")
 					os.Exit(1)
 				}
-			}
-
-			// 获取加密密码
-			password, err := readPasswordFromConsole()
-			if err != nil {
-				fmt.Printf("\nError: %v\n", err)
-				os.Exit(1)
 			}
 
 			// 使用 Argon2id 加密助记词
@@ -340,7 +340,6 @@ func CreateCmd() *cobra.Command {
 						fullPath = filepath.Join(output.Path, walletName+".json")
 					}
 					fmt.Printf("  btc-cli get -i %s\n", fullPath)
-					break
 				}
 			}
 

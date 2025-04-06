@@ -117,20 +117,6 @@ func CopyCmd() *cobra.Command {
 			// Check if destination already has a wallet with the same name
 			if isDestCloud {
 				destDir := util.DEFAULT_CLOUD_FILE_DIR
-				wallets, err := util.List(toLocation, destDir)
-				if err != nil {
-					fmt.Printf("Error listing wallets in destination %s: %v\n", toLocation, err)
-					os.Exit(1)
-				}
-
-				for _, w := range wallets {
-					if w == walletName {
-						red := color.New(color.FgRed, color.Bold)
-						red.Printf("Copy failed: A wallet with name '%s' already exists in %s\n", walletName, toLocation)
-						os.Exit(1)
-					}
-				}
-
 				// Save to cloud storage
 				cloudPath := filepath.Join(destDir, walletName+".json")
 				result, err := util.Put(toLocation, sourceData, cloudPath, false)

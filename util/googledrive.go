@@ -549,13 +549,27 @@ func findFolderIDByPath(srv *drive.Service, path string) (string, error) {
 			return "", fmt.Errorf("failed to query folder: %v", err)
 		}
 
-		// 如果找不到文件夹，返回错误
+		// 如果找不到文件夹，创建它而不是返回错误
 		if len(fileList.Files) == 0 {
-			return "", fmt.Errorf("folder not found: %s", part)
-		}
+			// 创建新文件夹
+			folder := &drive.File{
+				Name:     part,
+				MimeType: "application/vnd.google-apps.folder",
+				Parents:  []string{parentID},
+			}
 
-		// 更新父文件夹ID
-		parentID = fileList.Files[0].Id
+			newFolder, err := srv.Files.Create(folder).Fields("id").Do()
+			if err != nil {
+				return "", fmt.Errorf("failed to create folder: %v", err)
+			}
+			fmt.Printf("Created folder '%s' in Google Drive\n", part)
+
+			// 更新父文件夹ID为新创建的文件夹ID
+			parentID = newFolder.Id
+		} else {
+			// 文件夹已存在，更新父文件夹ID
+			parentID = fileList.Files[0].Id
+		}
 	}
 
 	return parentID, nil
