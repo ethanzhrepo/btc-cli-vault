@@ -1,0 +1,14 @@
+test.sh
+.env
+test_data
+test
+test.sh
+.DS_Store
+release
+btc-cli
+btc-cli-wallet
+.idea
+.vscode
+tmp.txt
+temp.txt
+btc-cli-vault

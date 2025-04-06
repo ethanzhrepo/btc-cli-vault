@@ -1,0 +1,99 @@
+Privacy Policy
+
+This Privacy Policy explains the data practices of [eth-cli-vault] ("we," "us," or "our") regarding your use of our [eth-cli-vault] (the "Service").
+
+1. No Data Collection by Us
+
+We fundamentally do not collect, store, host, access, own, or retain any of your personal data or user-generated content (such as files, documents, or other data you manage using the Service).
+
+2. Data Storage Location
+
+All data processed or managed through our Service resides solely on:
+
+Your local device's storage (e.g., hard drive, SSD).
+
+Your designated third-party cloud storage accounts (e.g., Google Drive, Dropbox, Box, etc.).
+
+You are solely responsible for managing the storage and security of your data on your local devices and within your third-party cloud storage accounts.
+
+3. Third-Party Cloud Storage Services
+
+Technical Integration Only: Our Service may integrate with various third-party cloud storage providers to allow you to access and manage your files stored there. This integration is purely technical to enable functionality.
+
+No Endorsement or Affiliation: Our integration with any third-party cloud storage provider does not constitute an endorsement, partnership, or service commitment. We do not vouch for, nor are we responsible for, the operations, policies, or data handling practices of these third-party providers.
+
+User's Agreement with Provider: Your use of any third-party cloud storage service is governed solely by the terms of service and privacy policy between you and that provider. We are not a party to that agreement and have no responsibility for reviewing or enforcing the terms under which third parties collect or manage your data. You are responsible for understanding and agreeing to the terms of your chosen cloud storage providers.
+
+4. Information We Do Not Handle
+
+Given our policy of not collecting user data, we do not:
+
+Use your personal data for any purpose.
+
+Share your personal data with any third parties (as we do not possess it).
+
+Retain your personal data.
+
+Require processes for accessing, correcting, or deleting personal data held by us (as none is held).
+
+5. Children's Privacy
+
+Our Service is not intended for use by children under the age of [Specify Age, e.g., 13 in US, 14 in China, 16 in GDPR]. We do not knowingly collect any information, personal or otherwise, from children. If you believe a child may have interacted with our service in a way that implies data collection (which should not be possible per our design), please contact us immediately.
+
+6. Changes to This Privacy Policy
+
+We may update this Privacy Policy occasionally. We will notify you of significant changes by posting the new Privacy Policy on this page and updating the "Effective Date." Your continued use of the Service after changes signifies your acceptance of the revised policy.
+
+7. Contact Us
+
+If you have any questions about this Privacy Policy, please UNINSTALL this software. 
+
+隐私政策
+
+本隐私政策旨在说明 [eth-cli-vault]（简称"我们"）在您使用我们的 [eth-cli-vault]（简称"服务"）时的数据处理实践。
+
+1. 我方不收集任何数据
+
+我们明确声明：我们不收集、不存储、不托管、不访问、不拥有、也不保留您的任何个人数据或用户生成内容（例如您通过本服务管理的文件、文档或其他数据）。
+
+2. 数据存储位置
+
+所有通过本服务处理或管理的数据完全存储在：
+
+您本地设备的存储空间中（例如：硬盘、固态硬盘）。
+
+您指定的第三方云存储服务账户中（例如：百度网盘、阿里云盘、Google Drive 等）。
+
+您对存储在您本地设备和第三方云存储账户中数据的管理和安全负全部责任。
+
+3. 第三方云存储服务
+
+仅技术集成： 我们的服务可能与多个第三方云存储提供商进行集成，以便您访问和管理存储在这些服务上的文件。此集成仅为实现功能目的的技术性连接。
+
+非认可或关联： 我们与任何第三方云存储提供商的集成不代表任何形式的认可、合作关系或服务承诺。我们不对这些第三方提供商的运营、政策或数据处理实践提供保证，也不承担任何责任。
+
+用户与提供商的协议： 您对任何第三方云存储服务的使用，完全受您与该服务提供商之间的服务条款和隐私政策约束。我们不是该协议的当事方，不负责审核或执行第三方收集或管理您数据的条款。您有责任理解并同意您所选择的云存储提供商的条款。
+
+4. 我方不处理的信息
+
+基于我们不收集用户数据的政策，我们不会：
+
+将您的个人数据用于任何目的。
+
+与任何第三方共享您的个人数据（因为我们不持有这些数据）。
+
+保留您的个人数据。
+
+设立关于访问、更正或删除由我方持有的个人数据的流程（因为我们不持有任何此类数据）。
+
+5. 儿童隐私
+
+我们的服务不适用于 [指定年龄，例如：中国为14周岁，美国为13周岁，GDPR为16周岁] 以下的儿童。我们不会故意收集儿童的任何信息（无论是个人信息还是其他信息）。如果您认为有儿童以可能涉及数据收集的方式（尽管根据我们的设计这应当是不可能的）与我们的服务进行了互动，请立即与我们联系。
+
+6. 本隐私政策的变更
+
+我们可能会不时更新本隐私政策。如有重大变更，我们将在此页面上发布新的隐私政策并更新"生效日期"以通知您。您在变更后继续使用本服务即表示您接受修订后的政策。
+
+7. 联系我们
+
+如果您对本隐私政策有任何疑问，请停止使用本软件并立即卸载。
