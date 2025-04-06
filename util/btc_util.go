@@ -279,7 +279,7 @@ func FetchUTXOsWithOptions(address string, customApiURL string, useTestnet bool,
 				}
 			} else if len(utxo.PkScriptBytes) > 0 {
 				// Use pre-decoded bytes if available
-				utxo.PkScriptBytes = utxo.PkScriptBytes
+				// No need to do anything - bytes are already set in utxo.PkScriptBytes
 			} else {
 				// 不再使用虚拟脚本，而是返回错误
 				return nil, fmt.Errorf("missing script information for UTXO %s:%d - ensure UTXOs are fetched with withScript=true",
@@ -412,7 +412,7 @@ func CreateUTXOsWithOptions(options UTXOSelectionOptions) (*CoinSelectionResult,
 			}
 		} else if len(utxo.PkScriptBytes) > 0 {
 			// Use pre-decoded bytes if available
-			pkScriptBytes = utxo.PkScriptBytes
+			// No need to do anything - bytes are already set in utxo.PkScriptBytes
 		} else {
 			// 不再使用虚拟脚本，而是返回错误
 			return nil, fmt.Errorf("missing script information for UTXO %s:%d - ensure UTXOs are fetched with withScript=true",

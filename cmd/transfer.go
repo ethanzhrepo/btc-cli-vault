@@ -206,7 +206,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 
 	// 验证选择的账户包含必要的派生路径
 	if selectedAccount.DerivationPath == "" && selectedAccount.HDPath == "" {
-		return fmt.Errorf("\033[1;31mError: Selected account does not have a derivation path.\033[0m\nThis wallet cannot be used for transactions until a proper derivation path is added.")
+		return fmt.Errorf("\033[1;31mError: Selected account does not have a derivation path\033[0m\nThis wallet cannot be used for transactions until a proper derivation path is added")
 	}
 
 	// 显示派生路径
@@ -218,12 +218,12 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 
 	// Safety check for P2SH-P2WPKH accounts - verify redeem script is present
 	if (selectedAccount.Type == "p2sh-p2wpkh" || selectedAccount.Type == "nested-segwit") && selectedAccount.RedeemScript == "" {
-		return fmt.Errorf("\033[1;31mError: Missing redeem script for P2SH-P2WPKH account.\033[0m\nThis wallet cannot be used for transactions until the redeem script is added to the wallet file.")
+		return fmt.Errorf("\033[1;31mError: Missing redeem script for P2SH-P2WPKH account\033[0m\nThis wallet cannot be used for transactions until the redeem script is added to the wallet file")
 	}
 
 	// Safety check for P2TR accounts - verify internal pubkey is present
 	if (selectedAccount.Type == "p2tr" || selectedAccount.Type == "taproot") && selectedAccount.InternalPubKey == "" {
-		return fmt.Errorf("\033[1;31mError: Missing internal pubkey for Taproot account.\033[0m\nThis wallet cannot be used for transactions until the internal pubkey is added to the wallet file.")
+		return fmt.Errorf("\033[1;31mError: Missing internal pubkey for Taproot account\033[0m\nThis wallet cannot be used for transactions until the internal pubkey is added to the wallet file")
 	}
 
 	if selectedAccount.Type == "p2sh-p2wpkh" && selectedAccount.RedeemScript != "" {
