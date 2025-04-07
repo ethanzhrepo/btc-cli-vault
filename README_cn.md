@@ -1,4 +1,4 @@
-# btc命令行钱包
+# btc命令行钱包 (v0.1.0)
 
 一个安全的btc命令行钱包，支持多种密钥存储的命令行程序，避免私钥丢失或者泄漏风险。
 
@@ -12,12 +12,6 @@
 <a href="https://x.com/intent/follow?screen_name=0x99_Ethan">
 <img alt="X (formerly Twitter) Follow" src="https://img.shields.io/twitter/follow/0x99_Ethan">
 </a>
-
-<a href="https://t.me/ethanatca"><img alt="" src="https://img.shields.io/badge/Telegram-%40ethanatca-blue" /></a>
-<a href="https://x.com/intent/follow?screen_name=0x99_Ethan">
-<img alt="X (formerly Twitter) Follow" src="https://img.shields.io/twitter/follow/0x99_Ethan">
-</a>
-
 
 ## 解决场景
 
@@ -164,14 +158,91 @@ btc-cli consolidate-utxos --wallet wallet.json
 
 ### 从二进制发布版
 
-从[发布页面](https://github.com/ethanzhrepo/btc-cli-vault/releases)下载最新版本。
+从[发布页面](https://github.com/ethanzhrepo/btc-cli-vault/releases)下载最新版本 (v0.1.0)。
+
+#### Linux
+
+```bash
+# 下载二进制文件
+wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.0/btc-cli-0.1.0-linux-amd64
+
+# 添加执行权限
+chmod +x btc-cli-0.1.0-linux-amd64
+
+# 移动到PATH目录（可选）
+sudo mv btc-cli-0.1.0-linux-amd64 /usr/local/bin/btc-cli
+
+# 运行
+btc-cli --help
+```
+
+#### macOS (Apple Silicon)
+
+```bash
+# 下载二进制文件
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.0/btc-cli-0.1.0-darwin-Silicon
+
+# 添加执行权限
+chmod +x btc-cli-0.1.0-darwin-Silicon
+
+# 移动到PATH目录（可选）
+sudo mv btc-cli-0.1.0-darwin-Silicon /usr/local/bin/btc-cli
+
+# 运行
+btc-cli --help
+```
+
+> **注意**：使用Intel芯片的Mac用户应该从源码编译以获得最佳兼容性。
+
+#### Windows
+
+1. 从发布页面下载Windows可执行文件 (btc-cli-0.1.0-windows-amd64.exe)
+2. 重命名为btc-cli.exe（可选）
+3. 打开命令提示符或PowerShell，导航到下载位置
+4. 运行可执行文件：`.\btc-cli.exe --help`
 
 ### 从源代码
 
+为了获得最佳兼容性或如果您想修改代码，建议从源代码构建：
+
 ```bash
+# 克隆仓库
 git clone https://github.com/ethanzhrepo/btc-cli-vault.git
 cd btc-cli-vault
-go build
+
+# 复制示例.env文件并编辑您自己的API密钥
+cp .env.example .env
+nano .env  # 或使用任何文本编辑器更新密钥
+
+# 构建二进制文件
+go build -o btc-cli
+
+# 运行
+./btc-cli --help
+```
+
+#### 使用环境变量构建
+
+如果您希望将API密钥嵌入到二进制文件中：
+
+```bash
+# 设置环境变量（替换为您的实际密钥）
+export GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+export GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
+export DROPBOX_APP_KEY=your_dropbox_app_key
+export BOX_CLIENT_ID=your_box_client_id
+export BOX_CLIENT_SECRET=your_box_client_secret
+export AWS_ACCESS_KEY_ID=your_aws_access_key_id
+export AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+export AWS_S3_BUCKET=your_aws_s3_bucket
+export AWS_REGION=your_aws_region
+
+# 构建并嵌入这些变量
+make build-macos  # 适用于macOS
+# 或
+make build-linux-amd64  # 适用于Linux
+# 或
+make build-windows  # 适用于Windows
 ```
 
 ## 许可证

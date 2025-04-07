@@ -1,4 +1,4 @@
-# Bitcoin CLI Vault
+# Bitcoin CLI Vault (v0.1.0)
 
 A secure command-line wallet for Bitcoin that supports multiple key storage providers.
 
@@ -160,14 +160,91 @@ btc-cli consolidate-utxos --wallet wallet.json
 
 ### From Binary Releases
 
-Download the latest release from the [Releases page](https://github.com/ethanzhrepo/btc-cli-vault/releases).
+Download the latest release (v0.1.0) from the [Releases page](https://github.com/ethanzhrepo/btc-cli-vault/releases).
+
+#### Linux
+
+```bash
+# Download the binary
+wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.0/btc-cli-0.1.0-linux-amd64
+
+# Make it executable
+chmod +x btc-cli-0.1.0-linux-amd64
+
+# Move to a directory in your PATH (optional)
+sudo mv btc-cli-0.1.0-linux-amd64 /usr/local/bin/btc-cli
+
+# Run the binary
+btc-cli --help
+```
+
+#### macOS (Apple Silicon)
+
+```bash
+# Download the binary
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.0/btc-cli-0.1.0-darwin-Silicon
+
+# Make it executable
+chmod +x btc-cli-0.1.0-darwin-Silicon
+
+# Move to a directory in your PATH (optional)
+sudo mv btc-cli-0.1.0-darwin-Silicon /usr/local/bin/btc-cli
+
+# Run the binary
+btc-cli --help
+```
+
+> **Note for macOS Intel users**: Intel-based macOS users should compile from source for optimal compatibility.
+
+#### Windows
+
+1. Download the Windows executable (btc-cli-0.1.0-windows-amd64.exe) from the releases page
+2. Rename it to btc-cli.exe (optional)
+3. Open Command Prompt or PowerShell and navigate to the download location
+4. Run the executable: `.\btc-cli.exe --help`
 
 ### From Source
 
+For the best compatibility or if you want to modify the code, building from source is recommended:
+
 ```bash
+# Clone the repository
 git clone https://github.com/ethanzhrepo/btc-cli-vault.git
 cd btc-cli-vault
-go build
+
+# Copy the example .env file and edit it with your own API keys
+cp .env.example .env
+nano .env  # or use any text editor to update the keys
+
+# Build the binary
+go build -o btc-cli
+
+# Run the binary
+./btc-cli --help
+```
+
+#### Build with environment variables
+
+If you prefer to embed the API keys in the binary:
+
+```bash
+# Set environment variables (replace with your actual keys)
+export GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+export GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
+export DROPBOX_APP_KEY=your_dropbox_app_key
+export BOX_CLIENT_ID=your_box_client_id
+export BOX_CLIENT_SECRET=your_box_client_secret
+export AWS_ACCESS_KEY_ID=your_aws_access_key_id
+export AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+export AWS_S3_BUCKET=your_aws_s3_bucket
+export AWS_REGION=your_aws_region
+
+# Build with these variables embedded
+make build-macos  # For macOS
+# OR
+make build-linux-amd64  # For Linux
+# OR
+make build-windows  # For Windows
 ```
 
 ## License
