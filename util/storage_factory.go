@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -31,10 +32,10 @@ func (f *StorageFactory) NewStorage(provider string) (Storage, error) {
 		return &LocalStorage{}, nil
 	case PROVIDER_KEYCHAIN:
 		// Check if we're on macOS before allowing keychain storage
-		if !IsMacOS() {
-			return nil, fmt.Errorf("keychain storage is only available on macOS")
+		if runtime.GOOS == "darwin" {
+			return &KeychainStorage{}, nil
 		}
-		return &KeychainStorage{}, nil
+		return nil, fmt.Errorf("keychain storage is only available on macOS")
 	default:
 		// If the provider is not one of the cloud providers, treat it as a local path
 		if isLocalPath(provider) {
