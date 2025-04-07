@@ -50,3 +50,135 @@
 - 本地钱包存储选项
 - **无服务器组件** - 所有 OAuth 令牌交换、云存储对接和授权过程完全在您的本地计算机上进行，不涉及任何外部服务器。该程序完全是客户端的，将来也不会有任何服务器组件。
 
+## 支持的地址类型
+
+- 传统地址 (P2PKH)
+- 隔离见证地址 (P2WPKH)
+- 嵌套隔离见证地址 (P2SH-P2WPKH)
+- Taproot地址 (P2TR)
+
+## 支持的网络
+
+- 比特币主网
+- 比特币测试网
+
+## 存储选项
+
+- 本地文件系统
+- Google Drive
+- Dropbox
+- Box
+- AWS S3
+- Apple Keychain (仅限macOS)
+
+## 可用命令
+
+### 核心钱包功能
+
+- `create` - 创建新的比特币钱包，支持多种地址类型
+- `get` - 从钱包文件中检索并显示比特币地址
+- `list` - 列出云存储中可用的钱包
+- `copy` - 在不同存储提供商之间复制钱包文件
+
+### 交易操作
+
+- `transfer` - 创建并广播比特币交易
+- `sign-tx` - 签署原始比特币交易
+- `sign-message` - 使用比特币私钥签署消息
+- `utxo` - 列出地址的未花费交易输出
+- `fee` - 获取当前推荐的比特币交易费用
+- `consolidate-utxos` - 将多个小额UTXO合并为一个输出
+
+### 配置
+
+- `config` - 管理配置设置
+  - `get` - 获取配置值
+  - `set` - 设置配置值
+  - `delete` - 删除配置值
+  - `list` - 列出所有配置值
+
+## 使用示例
+
+### 创建新钱包
+
+```bash
+# 创建钱包并保存到本地文件
+btc-cli create --output fs --path wallet.json
+
+# 创建钱包并保存到Google Drive
+btc-cli create --output google
+
+# 创建钱包并保存到Apple Keychain（仅限macOS）
+btc-cli create --output keychain
+```
+
+### 获取钱包地址
+
+```bash
+# 从本地文件
+btc-cli get --input wallet.json
+
+# 从云存储
+btc-cli get --input google --name mywallet
+
+# 从Apple Keychain
+btc-cli get --input keychain --name mywallet
+```
+
+### 签署消息
+
+```bash
+# 使用钱包中的密钥签署消息
+btc-cli sign-message --data "Hello, Bitcoin!" --file wallet.json
+```
+
+### 检查UTXO
+
+```bash
+# 列出特定地址的UTXO
+btc-cli utxo --address bc1qexample...
+```
+
+### 转账比特币
+
+```bash
+# 从您的钱包向另一个地址转账资金
+btc-cli transfer --from wallet.json --to bc1qexample... --amount 0.001
+```
+
+### 获取费用建议
+
+```bash
+# 获取当前费用建议
+btc-cli fee
+```
+
+### 合并UTXO
+
+```bash
+# 将多个小额UTXO合并为一个输出
+btc-cli consolidate-utxos --wallet wallet.json
+```
+
+## 安装
+
+### 从二进制发布版
+
+从[发布页面](https://github.com/ethanzhrepo/btc-cli-vault/releases)下载最新版本。
+
+### 从源代码
+
+```bash
+git clone https://github.com/ethanzhrepo/btc-cli-vault.git
+cd btc-cli-vault
+go build
+```
+
+## 许可证
+
+[MIT许可证](LICENSE)
+
+## 贡献
+
+欢迎贡献！请随时提交拉取请求。
+

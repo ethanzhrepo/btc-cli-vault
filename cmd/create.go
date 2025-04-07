@@ -28,7 +28,8 @@ type OutputTarget struct {
 
 // CreateCmd 返回 create 命令
 func CreateCmd() *cobra.Command {
-	var outputLocations string
+	var outputLocation string
+	var outputPath string
 	var walletName string
 	var withPassphrase bool
 	var force bool
@@ -39,13 +40,26 @@ func CreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new Bitcoin wallet",
-		Long:  `Create a new Bitcoin wallet with BIP39 mnemonic and optional passphrase, save it to local filesystem or cloud storage.`,
+		Long: `Create a new Bitcoin wallet with BIP39 mnemonic and optional passphrase, save it to local filesystem or cloud storage.
+
+Supported providers:
+  fs          - Local file system
+  google      - Google Drive
+  dropbox     - Dropbox
+  box         - Box
+  s3          - AWS S3
+  keychain    - Apple Keychain (macOS only)
+
+Examples:
+  btc-cli create --output fs --path wallet.json --name mywallet
+  btc-cli create --output google --name mywallet
+  btc-cli create --output keychain --name mywallet`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// 初始化配置
 			initConfig()
 
 			// 检查必要参数
-			if outputLocations == "" {
+			if outputLocation == "" {
 				fmt.Println("Error: --output parameter is required")
 				cmd.Usage()
 				os.Exit(1)
@@ -58,10 +72,44 @@ func CreateCmd() *cobra.Command {
 			}
 
 			// 解析输出位置
-			outputs, err := parseOutputTargets(outputLocations)
-			if err != nil {
-				fmt.Printf("Error parsing output locations: %v\n", err)
-				os.Exit(1)
+			var outputs []OutputTarget
+			var err error
+
+			// 处理文件系统存储
+			if outputLocation == "fs" {
+				if outputPath == "" {
+					fmt.Println("Error: --path parameter is required when using file system storage")
+					cmd.Usage()
+					os.Exit(1)
+				}
+				outputs = append(outputs, OutputTarget{Method: "fs", Path: outputPath})
+			} else {
+				// 检查是否是支持的云存储提供商
+				isCloudProvider := false
+				for _, provider := range util.CLOUD_PROVIDERS {
+					if outputLocation == provider {
+						// 检查 keychain 是否仅在 macOS 上使用
+						if outputLocation == "keychain" && !util.IsMacOS() {
+							fmt.Println("Error: keychain storage is only available on macOS")
+							os.Exit(1)
+						}
+
+						outputs = append(outputs, OutputTarget{Method: outputLocation, Path: ""})
+						isCloudProvider = true
+						break
+					}
+				}
+
+				if !isCloudProvider {
+					fmt.Printf("Error: Unsupported storage provider: %s\n", outputLocation)
+					// 根据系统平台判断是否显示 keychain 选项
+					if util.IsMacOS() {
+						fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3, keychain")
+					} else {
+						fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3")
+					}
+					os.Exit(1)
+				}
 			}
 
 			// 检查是否已存在同名文件
@@ -339,13 +387,13 @@ func CreateCmd() *cobra.Command {
 					if !strings.HasSuffix(output.Path, ".json") {
 						fullPath = filepath.Join(output.Path, walletName+".json")
 					}
-					fmt.Printf("  btc-cli get -i %s\n", fullPath)
+					fmt.Printf("  btc-cli get --input %s\n", fullPath)
 				}
 			}
 
 			for _, output := range outputs {
 				if output.Method != "fs" {
-					fmt.Printf("  btc-cli get -i %s -n %s\n", output.Method, walletName)
+					fmt.Printf("  btc-cli get --input %s --name %s\n", output.Method, walletName)
 					break
 				}
 			}
@@ -360,7 +408,8 @@ func CreateCmd() *cobra.Command {
 	}
 
 	// 添加命令参数
-	cmd.Flags().StringVarP(&outputLocations, "output", "o", "", "Comma-separated list of output locations (local path or cloud provider)")
+	cmd.Flags().StringVarP(&outputLocation, "output", "o", "", "Output location (fs for file system or cloud provider name)")
+	cmd.Flags().StringVarP(&outputPath, "path", "p", "", "File path for local storage (required when --output=fs)")
 	cmd.Flags().StringVarP(&walletName, "name", "n", "", "Name of the wallet file")
 	cmd.Flags().BoolVar(&withPassphrase, "without-passphrase", false, "Skip the BIP39 passphrase step")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force overwrite if wallet file already exists")
@@ -613,7 +662,7 @@ func createAccountInfo(accountType string, purpose uint32, coinType uint32, mast
 	return account, nil
 }
 
-// 解析输出字符串
+// 解析输出字符串（保留此函数以向后兼容，但不使用）
 func parseOutputTargets(outputStr string) ([]OutputTarget, error) {
 	if outputStr == "" {
 		return nil, fmt.Errorf("output locations cannot be empty")
