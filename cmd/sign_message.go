@@ -213,7 +213,7 @@ func runSignMessage(cmd *cobra.Command, args []string) error {
 	// Filter accounts to only show supported types (legacy P2PKH and SegWit P2WPKH)
 	var supportedAccounts []AccountInfo
 	for _, account := range wallet.Accounts {
-		if account.Type == "legacy" || account.Type == "segwit" {
+		if account.Type == "legacy" || account.Type == "segwit" || account.Type == "p2pkh" || account.Type == "p2wpkh" {
 			supportedAccounts = append(supportedAccounts, account)
 		}
 	}
@@ -229,6 +229,8 @@ func runSignMessage(cmd *cobra.Command, args []string) error {
 	accountTypeNames := map[string]string{
 		"legacy": "P2PKH (Legacy)",
 		"segwit": "P2WPKH (SegWit)",
+		"p2pkh":  "P2PKH (Legacy)",
+		"p2wpkh": "P2WPKH (SegWit)",
 	}
 
 	// Display available accounts
