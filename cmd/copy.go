@@ -54,37 +54,12 @@ func CopyCmd() *cobra.Command {
 			if isSourceCloud {
 				// Need a wallet name for cloud storage
 				if walletName == "" {
-					// List available wallets and let user choose if no name provided
-					wallets, err := util.List(fromLocation, util.DEFAULT_CLOUD_FILE_DIR)
-					if err != nil {
-						fmt.Printf("Error listing wallets from %s: %v\n", fromLocation, err)
-						os.Exit(1)
-					}
-
-					if len(wallets) == 0 {
-						fmt.Printf("No wallets found in %s\n", fromLocation)
-						os.Exit(1)
-					}
-
-					// For cloud storage without name specified, show selection menu
-					fmt.Println("Available wallets:")
-					for i, wallet := range wallets {
-						fmt.Printf("%d. %s\n", i+1, wallet)
-					}
-
-					var choice int
-					fmt.Print("Choose a wallet to copy (1-" + fmt.Sprintf("%d", len(wallets)) + "): ")
-					fmt.Scan(&choice)
-
-					if choice < 1 || choice > len(wallets) {
-						fmt.Println("Invalid selection")
-						os.Exit(1)
-					}
-
-					walletName = wallets[choice-1]
+					fmt.Println("Error: --name parameter is required when using cloud storage")
+					cmd.Usage()
+					os.Exit(1)
 				}
 
-				cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, walletName+".json")
+				cloudPath := filepath.Join(util.GetCloudFileDir(), walletName+".json")
 				sourceData, err = util.Get(fromLocation, cloudPath)
 				if err != nil {
 					fmt.Printf("Error loading wallet from %s: %v\n", fromLocation, err)
@@ -116,7 +91,7 @@ func CopyCmd() *cobra.Command {
 
 			// Check if destination already has a wallet with the same name
 			if isDestCloud {
-				destDir := util.DEFAULT_CLOUD_FILE_DIR
+				destDir := util.GetCloudFileDir()
 				// Save to cloud storage
 				cloudPath := filepath.Join(destDir, walletName+".json")
 				result, err := util.Put(toLocation, sourceData, cloudPath, false)

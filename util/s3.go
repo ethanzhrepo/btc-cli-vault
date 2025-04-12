@@ -250,7 +250,7 @@ func normalizeS3Path(path string) string {
 
 	// If path is empty, use the default directory and filename
 	if path == "" {
-		path = filepath.Join(DEFAULT_CLOUD_FILE_DIR, DEFAULT_CLOUD_FILE_NAME)
+		path = filepath.Join(GetCloudFileDir(), DEFAULT_CLOUD_FILE_NAME)
 		// Remove leading slash again if present
 		if strings.HasPrefix(path, "/") {
 			path = path[1:]

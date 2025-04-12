@@ -1,4 +1,4 @@
-VERSION=0.1.0
+VERSION=0.1.1
 BINARY=btc-cli
 RELEASE_DIR=release
 

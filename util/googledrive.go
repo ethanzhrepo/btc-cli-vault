@@ -434,7 +434,7 @@ func ListGoogleDriveFiles(dirPath string) ([]string, error) {
 		ClientSecret: oauthConfig.ClientSecret,
 		Endpoint:     google.Endpoint,
 		Scopes:       []string{drive.DriveFileScope},
-		RedirectURL:  "http://localhost:18080",
+		RedirectURL:  "http://localhost:18080/list",
 	}
 
 	// 创建随机状态字符串
@@ -449,7 +449,7 @@ func ListGoogleDriveFiles(dirPath string) ([]string, error) {
 	var authCode string
 
 	server := &http.Server{Addr: ":18080"}
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/list", func(w http.ResponseWriter, r *http.Request) {
 		// 验证状态值
 		if r.FormValue("state") != state {
 			http.Error(w, "Invalid state", http.StatusBadRequest)

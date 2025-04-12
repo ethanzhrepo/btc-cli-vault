@@ -59,7 +59,7 @@ func GetAddressCmd() *cobra.Command {
 						os.Exit(1)
 					}
 
-					cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, walletName+".json")
+					cloudPath := filepath.Join(util.GetCloudFileDir(), walletName+".json")
 					walletData, err = util.Get(provider, cloudPath)
 					if err != nil {
 						fmt.Printf("Error loading wallet from %s: %v\n", provider, err)

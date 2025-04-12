@@ -35,7 +35,6 @@ func CreateCmd() *cobra.Command {
 	var force bool
 	var useTestnet bool
 	var showMnemonic bool
-	var addTaprootScript bool // 添加 Taproot 脚本路径选项
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -53,7 +52,8 @@ Supported providers:
 Examples:
   btc-cli create --output fs --path wallet.json --name mywallet
   btc-cli create --output google --name mywallet
-  btc-cli create --output keychain --name mywallet`,
+  btc-cli create --output keychain --name mywallet
+  btc-cli create --output google,dropbox,box --name mywallet`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// 初始化配置
 			initConfig()
@@ -75,41 +75,52 @@ Examples:
 			var outputs []OutputTarget
 			var err error
 
-			// 处理文件系统存储
-			if outputLocation == "fs" {
-				if outputPath == "" {
-					fmt.Println("Error: --path parameter is required when using file system storage")
-					cmd.Usage()
-					os.Exit(1)
-				}
-				outputs = append(outputs, OutputTarget{Method: "fs", Path: outputPath})
-			} else {
-				// 检查是否是支持的云存储提供商
-				isCloudProvider := false
-				for _, provider := range util.CLOUD_PROVIDERS {
-					if outputLocation == provider {
-						// 检查 keychain 是否仅在 macOS 上使用
-						if outputLocation == "keychain" && !util.IsMacOS() {
-							fmt.Println("Error: keychain storage is only available on macOS")
-							os.Exit(1)
+			// 处理多个输出位置（逗号分隔）
+			outputLocations := strings.Split(outputLocation, ",")
+			for _, loc := range outputLocations {
+				loc = strings.TrimSpace(loc)
+
+				// 处理文件系统存储
+				if loc == "fs" {
+					if outputPath == "" {
+						fmt.Println("Error: --path parameter is required when using file system storage")
+						cmd.Usage()
+						os.Exit(1)
+					}
+					outputs = append(outputs, OutputTarget{Method: "fs", Path: outputPath})
+				} else {
+					// 检查是否是支持的云存储提供商
+					isCloudProvider := false
+					for _, provider := range util.CLOUD_PROVIDERS {
+						if loc == provider {
+							// 检查 keychain 是否仅在 macOS 上使用
+							if loc == "keychain" && !util.IsMacOS() {
+								fmt.Printf("Error: keychain storage is only available on macOS, skipping this provider\n")
+								continue
+							}
+
+							outputs = append(outputs, OutputTarget{Method: loc, Path: ""})
+							isCloudProvider = true
+							break
 						}
+					}
 
-						outputs = append(outputs, OutputTarget{Method: outputLocation, Path: ""})
-						isCloudProvider = true
-						break
+					if !isCloudProvider {
+						fmt.Printf("Error: Unsupported storage provider: %s, skipping this provider\n", loc)
 					}
 				}
+			}
 
-				if !isCloudProvider {
-					fmt.Printf("Error: Unsupported storage provider: %s\n", outputLocation)
-					// 根据系统平台判断是否显示 keychain 选项
-					if util.IsMacOS() {
-						fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3, keychain")
-					} else {
-						fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3")
-					}
-					os.Exit(1)
+			// 确保至少有一个有效的输出位置
+			if len(outputs) == 0 {
+				fmt.Println("Error: No valid output locations specified")
+				// 根据系统平台判断是否显示 keychain 选项
+				if util.IsMacOS() {
+					fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3, keychain")
+				} else {
+					fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3")
 				}
+				os.Exit(1)
 			}
 
 			// 检查是否已存在同名文件
@@ -262,17 +273,6 @@ Examples:
 				fmt.Printf("Error creating taproot account: %v\n", err)
 				os.Exit(1)
 			}
-
-			// 如果启用了 Taproot 脚本路径选项，添加示例脚本路径
-			if addTaprootScript {
-				err = addTaprootScriptPath(&p2trAccount, masterKey, coinType, params)
-				if err != nil {
-					fmt.Printf("Error adding Taproot script path: %v\n", err)
-					os.Exit(1)
-				}
-				fmt.Println("Added example script path to Taproot account (2-of-3 multisig)")
-			}
-
 			accounts = append(accounts, p2trAccount)
 
 			// 创建钱包文件对象
@@ -326,7 +326,7 @@ Examples:
 
 				case "google", "dropbox", "s3", "box":
 					// 保存到云存储
-					cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, walletName+".json")
+					cloudPath := filepath.Join(util.GetCloudFileDir(), walletName+".json")
 					result, err := util.Put(output.Method, walletJSON, cloudPath, force)
 					if err != nil {
 						fmt.Printf("Error saving wallet to %s: %v\n", output.Method, err)
@@ -355,22 +355,7 @@ Examples:
 						fmt.Printf("%s address: \033[1;32m%s\033[0m\n", accountType, account.Address)
 						fmt.Printf("  Derivation path: %s\n", account.DerivationPath)
 						fmt.Printf("  Internal pubkey: %s\n", account.InternalPubKey)
-
-						// 显示 Taproot 脚本路径信息（如果有）
-						if account.TapScriptInfo != nil && len(account.TapScriptInfo.Leaves) > 0 {
-							fmt.Printf("  Script paths: %d\n", len(account.TapScriptInfo.Leaves))
-							for i, leaf := range account.TapScriptInfo.Leaves {
-								tagInfo := ""
-								if leaf.Tag != "" {
-									tagInfo = fmt.Sprintf(" (%s)", leaf.Tag)
-								}
-								fmt.Printf("    Path %d%s: Script length: %d bytes, Version: 0x%x\n",
-									i+1, tagInfo, len(leaf.Script)/2, leaf.LeafVersion)
-							}
-						} else {
-							fmt.Println("  Key-path only (no script paths defined)")
-						}
-
+						fmt.Println("  Key-path only (no script paths defined)")
 						continue
 					}
 				}
@@ -394,7 +379,6 @@ Examples:
 			for _, output := range outputs {
 				if output.Method != "fs" {
 					fmt.Printf("  btc-cli get --input %s --name %s\n", output.Method, walletName)
-					break
 				}
 			}
 
@@ -415,7 +399,6 @@ Examples:
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force overwrite if wallet file already exists")
 	cmd.Flags().BoolVarP(&useTestnet, "testnet", "t", false, "Use Bitcoin testnet instead of mainnet")
 	cmd.Flags().BoolVarP(&showMnemonic, "show-mnemonic", "s", false, "Show mnemonic phrase (use with caution!)")
-	cmd.Flags().BoolVar(&addTaprootScript, "with-taproot-script", false, "Add example script path to Taproot accounts (2-of-3 multisig)")
 
 	cmd.MarkFlagRequired("output")
 	cmd.MarkFlagRequired("name")
@@ -695,79 +678,4 @@ func parseOutputTargets(outputStr string) ([]OutputTarget, error) {
 	}
 
 	return targets, nil
-}
-
-// 向 Taproot 账户添加示例脚本路径
-func addTaprootScriptPath(account *AccountInfo, masterKey *hdkeychain.ExtendedKey, coinType uint32, params *chaincfg.Params) error {
-	// 确保账户类型为 p2tr
-	if account.Type != "p2tr" {
-		return fmt.Errorf("cannot add Taproot script path to non-Taproot account")
-	}
-
-	// 解析内部公钥
-	internalPubKeyBytes, err := hex.DecodeString(account.InternalPubKey)
-	if err != nil {
-		return fmt.Errorf("error decoding internal pubkey: %v", err)
-	}
-
-	// 创建 2-of-3 多签脚本所需的额外公钥
-	// 为了示例，我们使用同一个种子但不同的路径派生两个额外的公钥
-	derivationBase := fmt.Sprintf("m/%d'/%d'/%d'/", BIP86Purpose, coinType, 0)
-
-	// 派生额外公钥 1 (使用索引 1)
-	extraKey1, err := DeriveKeyFromPath(masterKey, derivationBase+"1/0")
-	if err != nil {
-		return fmt.Errorf("error deriving extra key 1: %v", err)
-	}
-	extraPrivKey1, err := extraKey1.ECPrivKey()
-	if err != nil {
-		return fmt.Errorf("error getting extra private key 1: %v", err)
-	}
-	extraPubKey1 := extraPrivKey1.PubKey()
-
-	// 派生额外公钥 2 (使用索引 2)
-	extraKey2, err := DeriveKeyFromPath(masterKey, derivationBase+"2/0")
-	if err != nil {
-		return fmt.Errorf("error deriving extra key 2: %v", err)
-	}
-	extraPrivKey2, err := extraKey2.ECPrivKey()
-	if err != nil {
-		return fmt.Errorf("error getting extra private key 2: %v", err)
-	}
-	extraPubKey2 := extraPrivKey2.PubKey()
-
-	// 为了 Taproot，我们使用 x-only 公钥
-	pubKey1Bytes := extraPubKey1.SerializeCompressed()[1:33]
-	pubKey2Bytes := extraPubKey2.SerializeCompressed()[1:33]
-
-	// 创建多签脚本 (2-of-3)
-	// 脚本格式：<OP_2> <pubkey1> <pubkey2> <internalPubKey> <OP_3> <OP_CHECKMULTISIG>
-	multiSigScript, err := txscript.NewScriptBuilder().
-		AddOp(txscript.OP_2).
-		AddData(pubKey1Bytes).
-		AddData(pubKey2Bytes).
-		AddData(internalPubKeyBytes).
-		AddOp(txscript.OP_3).
-		AddOp(txscript.OP_CHECKMULTISIG).
-		Script()
-	if err != nil {
-		return fmt.Errorf("error creating multisig script: %v", err)
-	}
-
-	// 创建 TapScriptInfo 结构
-	account.TapScriptInfo = &TapScriptInfo{
-		Leaves: []TapLeaf{
-			{
-				Tag:         "multisig_2of3",
-				Script:      hex.EncodeToString(multiSigScript),
-				LeafVersion: 0xc0, // 标准 tapscript 版本
-			},
-		},
-		// MerkleRoot 可以留空，由钱包软件在需要时计算
-	}
-
-	// 注意: 添加脚本路径不会改变地址，因为地址是基于内部公钥和脚本的默克尔根生成的
-	// 在实际场景中，你可能需要重新计算 merkle root 并更新地址
-
-	return nil
 }

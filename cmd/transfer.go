@@ -46,6 +46,7 @@ func TransferBTCCmd() *cobra.Command {
 	cmd.Flags().StringP("fee-preference", "", "normal", "Fee preference when auto-selecting (fastest, fast, normal, economic, minimum)")
 	cmd.Flags().StringP("api", "R", "", "Bitcoin node RPC URL (overrides config)")
 	cmd.Flags().Bool("testnet", false, "Use Bitcoin testnet instead of mainnet")
+	cmd.Flags().Bool("disable-rbf", false, "Disable Replace-By-Fee (RBF)")
 
 	cmd.MarkFlagRequired("amount")
 	cmd.MarkFlagRequired("to")
@@ -67,6 +68,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 	feePreference, _ := cmd.Flags().GetString("fee-preference")
 	apiURL, _ := cmd.Flags().GetString("api")
 	testnet, _ := cmd.Flags().GetBool("testnet")
+	disableRBF, _ := cmd.Flags().GetBool("disable-rbf")
 
 	// Initialize config
 	initConfig()
@@ -91,7 +93,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 		if name == "" {
 			return fmt.Errorf("wallet name is required when using cloud storage")
 		}
-		cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, name+".json")
+		cloudPath := filepath.Join(util.GetCloudFileDir(), name+".json")
 		walletData, err = util.Get(provider, cloudPath)
 		if err != nil {
 			return fmt.Errorf("error loading wallet from %s: %v", provider, err)
@@ -340,6 +342,13 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Fee percentage: \033[1;36m%.2f%%\033[0m of amount\n", feePercent)
 	}
 
+	// Display RBF status
+	if disableRBF {
+		fmt.Printf("RBF Status: \033[1;31mDisabled\033[0m (transaction cannot be replaced before confirmation)\n")
+	} else {
+		fmt.Printf("RBF Status: \033[1;32mEnabled\033[0m (transaction can be replaced with higher fee if needed)\n")
+	}
+
 	if utxoResult.Change > 0 {
 		fmt.Printf("Change: \033[1;33m%.8f BTC\033[0m (%s) returned to sender\n",
 			float64(utxoResult.Change)/100000000, formatSatoshis(utxoResult.Change))
@@ -368,7 +377,7 @@ func runTransferBTC(cmd *cobra.Command, args []string) error {
 
 	// Create and sign transaction
 	fmt.Println("\nCreating and signing transaction...")
-	signedTx, err := createAndSignTransaction(privateKey, utxoResult, toAddress, selectedAccount.Address, amountSat, params, selectedAccount)
+	signedTx, err := createAndSignTransaction(privateKey, utxoResult, toAddress, selectedAccount.Address, amountSat, params, selectedAccount, disableRBF)
 	if err != nil {
 		return fmt.Errorf("error creating transaction: %v", err)
 	}
@@ -588,6 +597,7 @@ func createAndSignTransaction(
 	amount uint64,
 	params *chaincfg.Params,
 	selectedAccount AccountInfo,
+	disableRBF bool,
 ) (*wire.MsgTx, error) {
 	// Create a new transaction
 	tx := wire.NewMsgTx(wire.TxVersion)
@@ -605,9 +615,14 @@ func createAndSignTransaction(
 		outPoint := wire.NewOutPoint(txHash, utxo.Vout)
 		txIn := wire.NewTxIn(outPoint, nil, nil)
 
-		// Set sequence to enable RBF (Replace-By-Fee) by default
-		// This allows the transaction to be replaced with higher fee version if needed
-		txIn.Sequence = 0xFFFFFFFD
+		// Set sequence based on RBF preference
+		if !disableRBF {
+			// Enable RBF (Replace-By-Fee) by using sequence 0xFFFFFFFD
+			txIn.Sequence = 0xFFFFFFFD
+		} else {
+			// Disable RBF by using max sequence 0xFFFFFFFF
+			txIn.Sequence = wire.MaxTxInSequenceNum
+		}
 
 		tx.AddTxIn(txIn)
 
@@ -727,6 +742,16 @@ func createAndSignTransaction(
 			// Safety check: Verify the internal key is available for Taproot
 			if taprootInternalKey == nil || len(taprootInternalKey) != 32 {
 				return nil, fmt.Errorf("missing or invalid internal pubkey for Taproot address - this should be stored in the wallet")
+			}
+
+			// Verify that the internal pubkey from wallet matches the derived private key's public key
+			walletPubKey, err := schnorr.ParsePubKey(taprootInternalKey)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing internal pubkey from wallet: %v", err)
+			}
+			derivedPubKey := privateKey.PubKey()
+			if !walletPubKey.IsEqual(derivedPubKey) {
+				return nil, fmt.Errorf("internal pubkey from wallet does not match the derived private key's public key")
 			}
 
 			// Create the signature hash for Taproot input (using SigHashDefault which is equivalent to SIGHASH_ALL in Taproot)

@@ -520,26 +520,29 @@ func DownloadFromDropbox(filePath string) ([]byte, error) {
 	return data, nil
 }
 
-// ListDropboxFiles lists files from the specified directory in Dropbox
+// ListDropboxFiles lists files in the specified Dropbox directory
 func ListDropboxFiles(dirPath string) ([]string, error) {
-	ctx := context.Background()
+	// If dirPath is empty, use default cloud file directory
+	if dirPath == "" {
+		dirPath = GetCloudFileDir()
+	}
 
-	// 获取OAuth配置
-	oauthConfig, err := GetDropboxOAuthConfig()
+	// Get token from config or prompt for login
+	config, err := GetDropboxOAuthConfig()
 	if err != nil {
 		fmt.Printf("Warning: Using default Dropbox OAuth credentials: %v\n", err)
 		// 继续使用默认值
 	}
 
 	// 检查凭据是否为空
-	if oauthConfig.AppKey == "" {
+	if config.AppKey == "" {
 		return nil, fmt.Errorf("\033[1;31mDropbox App Key is not configured. Please set DROPBOX_APP_KEY environment variable or configure it in %s/dropbox.json\033[0m", ConfigDir)
 	}
 
 	// 设置OAuth 2.0配置 - 使用PKCE模式，不需要client_secret
 	redirectURI := "http://localhost:18081/dropbox-callback"
-	config := &oauth2.Config{
-		ClientID: oauthConfig.AppKey,
+	configOAuth := &oauth2.Config{
+		ClientID: config.AppKey,
 		// 不需要ClientSecret
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  "https://www.dropbox.com/oauth2/authorize",
@@ -593,12 +596,12 @@ func ListDropboxFiles(dirPath string) ([]string, error) {
 		// 关闭HTTP服务器
 		go func() {
 			time.Sleep(1 * time.Second)
-			server.Shutdown(ctx)
+			server.Shutdown(context.Background())
 		}()
 	})
 
 	// 构建授权URL并添加PKCE参数
-	authURL := config.AuthCodeURL(
+	authURL := configOAuth.AuthCodeURL(
 		state,
 		oauth2.SetAuthURLParam("code_challenge", challengeStr),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
@@ -629,11 +632,11 @@ func ListDropboxFiles(dirPath string) ([]string, error) {
 	tokenData := url.Values{}
 	tokenData.Set("code", authCode)
 	tokenData.Set("grant_type", "authorization_code")
-	tokenData.Set("client_id", config.ClientID)
-	tokenData.Set("redirect_uri", config.RedirectURL)
+	tokenData.Set("client_id", configOAuth.ClientID)
+	tokenData.Set("redirect_uri", configOAuth.RedirectURL)
 	tokenData.Set("code_verifier", verifierStr) // 添加验证器
 
-	req, err := http.NewRequest("POST", config.Endpoint.TokenURL, strings.NewReader(tokenData.Encode()))
+	req, err := http.NewRequest("POST", configOAuth.Endpoint.TokenURL, strings.NewReader(tokenData.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token request: %v", err)
 	}
@@ -676,11 +679,6 @@ func ListDropboxFiles(dirPath string) ([]string, error) {
 		LogLevel: dropbox.LogOff,
 	}
 	client := files.New(config1)
-
-	// 如果目录路径是默认的，使用默认的钱包目录
-	if dirPath == "" {
-		dirPath = DEFAULT_CLOUD_FILE_DIR
-	}
 
 	// 确保文件路径以/开头
 	if !strings.HasPrefix(dirPath, "/") {

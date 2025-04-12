@@ -8,6 +8,7 @@ import (
 
 	"encoding/hex"
 
+	"strconv"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -711,4 +712,49 @@ func BroadcastRawTransaction(txHex string, customApiURL string, useTestnet bool)
 
 	// Return transaction ID (the response is the txid as text)
 	return string(body), nil
+}
+
+// GetBlockchainInfoApiURL returns the appropriate API URL for blockchain info
+func GetBlockchainInfoApiURL(customApiURL string, useTestnet bool) string {
+	if customApiURL != "" {
+		return customApiURL
+	}
+
+	if useTestnet {
+		return "https://mempool.space/testnet/api/blocks/tip/height"
+	}
+	return "https://mempool.space/api/blocks/tip/height"
+}
+
+// GetCurrentBlockHeight fetches the current block height from the mempool.space API
+func GetCurrentBlockHeight(customApiURL string, useTestnet bool) (uint64, error) {
+	// Get the API URL
+	apiURL := GetBlockchainInfoApiURL(customApiURL, useTestnet)
+
+	// Make HTTP request to the API
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return 0, fmt.Errorf("error connecting to blockchain API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	// Read response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, fmt.Errorf("error reading API response: %v", err)
+	}
+
+	// Parse height from response (mempool.space returns just the height as a number)
+	height, err := strconv.ParseUint(string(body), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing block height: %v", err)
+	}
+
+	return height, nil
 }

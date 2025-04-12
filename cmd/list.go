@@ -42,7 +42,7 @@ func ListCmd() *cobra.Command {
 			}
 
 			// 使用存储工厂获取钱包列表
-			wallets, err := util.List(inputLocation, util.DEFAULT_CLOUD_FILE_DIR)
+			wallets, err := util.List(inputLocation, util.GetCloudFileDir())
 			if err != nil {
 				fmt.Printf("Error listing wallets from %s: %v\n", inputLocation, err)
 				os.Exit(1)

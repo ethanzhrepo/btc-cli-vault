@@ -863,22 +863,25 @@ func printOperationInfo(provider, name, filePath, address string, useTestnet boo
 
 // loadWalletData loads wallet data from either a local file or cloud provider
 func loadWalletData(filePath, provider, name string) ([]byte, error) {
-	if filePath != "" {
-		// Load from local file system
-		walletData, err := util.Get(filePath, filePath)
-		if err != nil {
-			return nil, fmt.Errorf("error loading wallet from local file: %v", err)
-		}
-		return walletData, nil
-	} else {
-		// Load from cloud provider
-		cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, name+".json")
-		walletData, err := util.Get(provider, cloudPath)
+	var err error
+	var walletData []byte
+
+	if provider != "" {
+		// Load from cloud storage
+		cloudPath := filepath.Join(util.GetCloudFileDir(), name+".json")
+		walletData, err = util.Get(provider, cloudPath)
 		if err != nil {
 			return nil, fmt.Errorf("error loading wallet from %s: %v", provider, err)
 		}
-		return walletData, nil
+	} else {
+		// Load from local file
+		walletData, err = util.Get(filePath, filePath)
+		if err != nil {
+			return nil, fmt.Errorf("error loading wallet from local file: %v", err)
+		}
 	}
+
+	return walletData, nil
 }
 
 // promptForCredentials prompts the user for password and optional passphrase

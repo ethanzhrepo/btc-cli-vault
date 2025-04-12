@@ -1,5 +1,9 @@
 package util
 
+import (
+	"github.com/spf13/viper"
+)
+
 const (
 	ConfigDir               = ".btc-cli-wallet"
 	ConfigFile              = "config.json"
@@ -28,3 +32,13 @@ const (
 )
 
 var CLOUD_PROVIDERS = []string{PROVIDER_GOOGLE, PROVIDER_DROPBOX, PROVIDER_S3, PROVIDER_BOX, PROVIDER_KEYCHAIN}
+
+// GetCloudFileDir retrieves the cloud file directory from config or uses default
+func GetCloudFileDir() string {
+	// First check if the config has a wallet.btc.dir parameter
+	if viper.IsSet("wallet.btc.dir") {
+		return viper.GetString("wallet.btc.dir")
+	}
+	// Fall back to default value
+	return DEFAULT_CLOUD_FILE_DIR
+}

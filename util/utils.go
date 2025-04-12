@@ -111,7 +111,7 @@ func ParseStoragePath(path string) (string, string, error) {
 	switch method {
 	case "fs":
 		// 文件系统路径处理
-		if strings.HasPrefix(filePath, "/") {
+		if filepath.IsAbs(filePath) {
 			// 绝对路径，保持不变
 		} else {
 			// 相对路径，转为绝对路径

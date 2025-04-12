@@ -99,7 +99,7 @@ func SignTxCmd() *cobra.Command {
 
 			if provider != "" {
 				// Load from cloud storage
-				cloudPath := filepath.Join(util.DEFAULT_CLOUD_FILE_DIR, name+".json")
+				cloudPath := filepath.Join(util.GetCloudFileDir(), name+".json")
 				walletData, err = util.Get(provider, cloudPath)
 				if err != nil {
 					return fmt.Errorf("error loading wallet from %s: %v", provider, err)
@@ -288,6 +288,51 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 	// Fetch UTXOs for the inputs
 	fmt.Println("\nFetching UTXOs for transaction inputs...")
 
+	// Create a map to store input UTXO data for the prevOutFetcher
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut)
+
+	// Query UTXO data for each input
+	for i, txIn := range signedTx.TxIn {
+		fmt.Printf("Getting data for input #%d (outpoint: %s:%d)...\n", i, txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index)
+
+		// Get the previous transaction to extract value and script
+		txid := txIn.PreviousOutPoint.Hash.String()
+		vout := txIn.PreviousOutPoint.Index
+
+		// Fetch the transaction details using mempool.space API
+		prevTx, err := util.GetTransaction(txid, "", params == &chaincfg.TestNet3Params)
+		if err != nil {
+			return nil, fmt.Errorf("error fetching previous transaction %s: %v", txid, err)
+		}
+
+		// Validate vout index
+		if int(vout) >= len(prevTx.Vout) {
+			return nil, fmt.Errorf("invalid vout index %d for transaction %s", vout, txid)
+		}
+
+		// Get the previous output
+		prevOutput := prevTx.Vout[vout]
+
+		// Decode the script
+		pkScript, err := hex.DecodeString(prevOutput.ScriptPubKey)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding previous output script: %v", err)
+		}
+
+		// Store the previous output in the map
+		outpoint := wire.OutPoint{
+			Hash:  txIn.PreviousOutPoint.Hash,
+			Index: txIn.PreviousOutPoint.Index,
+		}
+		prevOuts[outpoint] = wire.NewTxOut(int64(prevOutput.Value), pkScript)
+
+		fmt.Printf("  Amount: %d satoshis\n", prevOutput.Value)
+		fmt.Printf("  Script Type: %s\n", prevOutput.ScriptPubKeyType)
+	}
+
+	// Create the previous output fetcher for sighash calculation
+	prevOutFetcher := txscript.NewMultiPrevOutFetcher(prevOuts)
+
 	// Prepare information needed for signing
 	var redeemScript []byte
 	var taprootInternalKey []byte
@@ -328,15 +373,25 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 		}
 	}
 
-	// For each input, check if it belongs to our address and sign it
+	// For each input, sign it based on its script type
 	for i, txIn := range signedTx.TxIn {
 		fmt.Printf("Signing input #%d (outpoint: %s:%d)...\n", i, txIn.PreviousOutPoint.Hash.String(), txIn.PreviousOutPoint.Index)
 
-		// Get the previous transaction to extract value and script
-		// Here we would need to fetch the previous transaction
-		// This is a simplified example - in a real implementation, you would need to fetch the actual UTXO data
+		// Get the previous output
+		outpoint := wire.OutPoint{
+			Hash:  txIn.PreviousOutPoint.Hash,
+			Index: txIn.PreviousOutPoint.Index,
+		}
+		prevOut := prevOuts[outpoint]
 
-		// For demonstration, we'll assume the input is from the selected address
+		if prevOut == nil {
+			return nil, fmt.Errorf("missing previous output for input %d", i)
+		}
+
+		// Get the script and value
+		pkScript := prevOut.PkScript
+		value := prevOut.Value
+
 		switch selectedAccount.Type {
 		case "p2pkh", "legacy":
 			// Create a legacy signature
@@ -360,23 +415,8 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 
 		case "p2wpkh", "segwit":
 			// Create a SegWit signature
-			pubKey := privateKey.PubKey().SerializeCompressed()
-			pubKeyHash := btcutil.Hash160(pubKey)
-
-			// Create the witness script
-			addr, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, params)
-			if err != nil {
-				return nil, fmt.Errorf("error creating witness address: %v", err)
-			}
-
-			pkScript, err := txscript.PayToAddrScript(addr)
-			if err != nil {
-				return nil, fmt.Errorf("error creating output script: %v", err)
-			}
-
-			// Since we don't know the exact UTXO value, we'll use 0 - this won't work in practice
-			// In a real implementation, you would need to fetch the actual UTXO value
-			sig, err := txscript.WitnessSignature(signedTx, txscript.NewTxSigHashes(signedTx, nil), i, 0, pkScript, txscript.SigHashAll, privateKey, true)
+			sig, err := txscript.WitnessSignature(signedTx, txscript.NewTxSigHashes(signedTx, prevOutFetcher),
+				i, value, pkScript, txscript.SigHashAll, privateKey, true)
 			if err != nil {
 				return nil, fmt.Errorf("error creating witness signature: %v", err)
 			}
@@ -401,9 +441,8 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 				return nil, fmt.Errorf("error creating witness script: %v", err)
 			}
 
-			// Since we don't know the exact UTXO value, we'll use 0 - this won't work in practice
-			// In a real implementation, you would need to fetch the actual UTXO value
-			sig, err := txscript.WitnessSignature(signedTx, txscript.NewTxSigHashes(signedTx, nil), i, 0, witnessScript, txscript.SigHashAll, privateKey, true)
+			sig, err := txscript.WitnessSignature(signedTx, txscript.NewTxSigHashes(signedTx, prevOutFetcher),
+				i, value, witnessScript, txscript.SigHashAll, privateKey, true)
 			if err != nil {
 				return nil, fmt.Errorf("error creating witness signature: %v", err)
 			}
@@ -426,11 +465,11 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 
 			// Create signature hash for Taproot input
 			sigHash, err := txscript.CalcTaprootSignatureHash(
-				txscript.NewTxSigHashes(signedTx, nil),
+				txscript.NewTxSigHashes(signedTx, prevOutFetcher),
 				txscript.SigHashDefault,
 				signedTx,
 				i,
-				nil, // We don't have prevOutFetcher here
+				prevOutFetcher,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("error calculating taproot signature hash: %v", err)
