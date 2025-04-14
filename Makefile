@@ -1,7 +1,7 @@
 VERSION=0.1.1
 BINARY=btc-cli
 RELEASE_DIR=release
-
+ARCH=$(shell uname -m)
 # Read environment variables from .env file
 include .env
 
@@ -32,16 +32,16 @@ clean:
 # 为当前平台构建macOS版本
 build-macos:
 	@echo "Building for current macOS architecture..."
-	@CGO_ENABLED=1 GOOS=darwin go build $(LDFLAGS) -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-darwin main.go
+	@CGO_ENABLED=1 GOOS=darwin go build $(LDFLAGS) -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-macos-$(ARCH) main.go
 
 # 下面的目标仅用于完整的交叉编译，可能无法工作
 build-macos-arm:
 	@echo "Building for macOS ARM (Apple Silicon)..."
-	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -tags darwin -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-darwin-Silicon main.go
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -tags darwin -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-macos-arm64 main.go
 
 build-macos-intel:
 	@echo "Building for macOS Intel..."
-	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -tags darwin -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-darwin-intel main.go
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -tags darwin -o $(RELEASE_DIR)/$(BINARY)-$(VERSION)-macos-amd64 main.go
 
 build-linux-x64:
 	@echo "Building for Linux x64..."
