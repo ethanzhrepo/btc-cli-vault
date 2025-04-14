@@ -182,13 +182,13 @@ btc-cli --help
 
 ```bash
 # Download the binary
-curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-darwin-Silicon
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-macos-arm64
 
 # Make it executable
-chmod +x btc-cli-0.1.1-darwin-Silicon
+chmod +x btc-cli-0.1.1-macos-arm64
 
 # Move to a directory in your PATH (optional)
-sudo mv btc-cli-0.1.1-darwin-Silicon /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.1-macos-arm64 /usr/local/bin/btc-cli
 
 # Run the binary
 btc-cli --help

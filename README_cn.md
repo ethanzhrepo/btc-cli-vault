@@ -180,13 +180,13 @@ btc-cli --help
 
 ```bash
 # 下载二进制文件
-curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-darwin-Silicon
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-macos-arm64
 
 # 添加执行权限
-chmod +x btc-cli-0.1.1-darwin-Silicon
+chmod +x btc-cli-0.1.1-macos-arm64
 
 # 移动到PATH目录（可选）
-sudo mv btc-cli-0.1.1-darwin-Silicon /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.1-macos-arm64 /usr/local/bin/btc-cli
 
 # 运行
 btc-cli --help
