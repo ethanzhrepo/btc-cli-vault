@@ -282,12 +282,12 @@ func GetAddressCmd() *cobra.Command {
 				fmt.Printf("P2WPKH address: \033[1;32m%s\033[0m\n", p2wpkhAddr)
 
 				// P2SH (脚本哈希 - 兼容格式的隔离见证地址)
-				p2shAddr, err := generateP2SHAddress(publicKey, params)
-				if err != nil {
-					fmt.Printf("Error generating P2SH address: %v\n", err)
-					os.Exit(1)
-				}
-				fmt.Printf("P2SH-P2WPKH address: \033[1;32m%s\033[0m\n", p2shAddr)
+				// p2shAddr, err := generateP2SHAddress(publicKey, params)
+				// if err != nil {
+				// 	fmt.Printf("Error generating P2SH address: %v\n", err)
+				// 	os.Exit(1)
+				// }
+				// fmt.Printf("P2SH-P2WPKH address: \033[1;32m%s\033[0m\n", p2shAddr)
 
 				// P2TR (Taproot)
 				p2trAddr, err := generateP2TRAddress(publicKey, params)

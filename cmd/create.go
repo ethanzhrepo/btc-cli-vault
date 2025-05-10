@@ -65,25 +65,16 @@ Examples:
 				os.Exit(1)
 			}
 
-			if walletName == "" {
-				fmt.Println("Error: --name parameter is required")
-				cmd.Usage()
-				os.Exit(1)
-			}
-
 			// 解析输出位置
 			var outputs []OutputTarget
-			var err error
+			isSingleFsOutput := false
 
-			// 处理多个输出位置（逗号分隔）
 			outputLocations := strings.Split(outputLocation, ",")
 			for _, loc := range outputLocations {
 				loc = strings.TrimSpace(loc)
-
-				// 处理文件系统存储
 				if loc == "fs" {
 					if outputPath == "" {
-						fmt.Println("Error: --path parameter is required when using file system storage")
+						fmt.Println("Error: --path parameter is required when using file system storage (--output=fs)")
 						cmd.Usage()
 						os.Exit(1)
 					}
@@ -93,27 +84,23 @@ Examples:
 					isCloudProvider := false
 					for _, provider := range util.CLOUD_PROVIDERS {
 						if loc == provider {
-							// 检查 keychain 是否仅在 macOS 上使用
 							if loc == "keychain" && !util.IsMacOS() {
 								fmt.Printf("Error: keychain storage is only available on macOS, skipping this provider\n")
 								continue
 							}
-
 							outputs = append(outputs, OutputTarget{Method: loc, Path: ""})
 							isCloudProvider = true
 							break
 						}
 					}
-
 					if !isCloudProvider {
 						fmt.Printf("Error: Unsupported storage provider: %s, skipping this provider\n", loc)
 					}
 				}
 			}
 
-			// 确保至少有一个有效的输出位置
 			if len(outputs) == 0 {
-				fmt.Println("Error: No valid output locations specified")
+				fmt.Println("Error: No valid output locations specified.")
 				// 根据系统平台判断是否显示 keychain 选项
 				if util.IsMacOS() {
 					fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3, keychain")
@@ -121,6 +108,38 @@ Examples:
 					fmt.Println("Supported providers: fs (file system), google, dropbox, box, s3")
 				}
 				os.Exit(1)
+			}
+
+			isSingleFsOutput = len(outputs) == 1 && outputs[0].Method == "fs"
+
+			// 根据输出类型调整 walletName 的必要性
+			if walletName == "" { // If name is not provided
+				if isSingleFsOutput {
+					// Only 'fs' output, try to derive name from path
+					base := filepath.Base(outputPath)
+					ext := filepath.Ext(base)
+					if ext == ".json" {
+						walletName = strings.TrimSuffix(base, ext)
+						if walletName == "" { // e.g., path was "/.json" or just ".json"
+							fmt.Println("Error: Could not derive wallet name from --path. Please provide --name or a valid .json file path.")
+							cmd.Usage()
+							os.Exit(1)
+						}
+						fmt.Printf("Info: --name not provided, derived wallet name '%s' from --path.\n", walletName)
+					} else {
+						// Path for 'fs' is a directory or not a .json file, name is required
+						fmt.Println("Error: --name is required when --output=fs and --path does not specify a .json file.")
+						cmd.Usage()
+						os.Exit(1)
+					}
+				} else {
+					// Cloud/keychain involved, or multiple outputs, name is required
+					fmt.Println("Error: --name parameter is required when using cloud storage, keychain, or multiple output locations.")
+					cmd.Usage()
+					os.Exit(1)
+				}
+			} else { // walletName IS provided
+				// No specific checks needed here if name is provided, fs path handling for filename will happen later
 			}
 
 			// 检查是否已存在同名文件
@@ -401,7 +420,6 @@ Examples:
 	cmd.Flags().BoolVarP(&showMnemonic, "show-mnemonic", "s", false, "Show mnemonic phrase (use with caution!)")
 
 	cmd.MarkFlagRequired("output")
-	cmd.MarkFlagRequired("name")
 
 	return cmd
 }
