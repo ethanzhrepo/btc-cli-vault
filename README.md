@@ -53,6 +53,8 @@ Always keep multiple backups of your encrypted wallet files and ensure you never
 - Nested SegWit addresses (P2SH-P2WPKH)
 - Taproot addresses (P2TR)
 
+> **TODO:** P2TR and P2SH address types are planned but not yet fully implemented in the current version.
+
 ## Supported Networks
 
 - Bitcoin Mainnet
@@ -254,3 +256,4 @@ make build-windows  # For Windows
 ## Contribution
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
