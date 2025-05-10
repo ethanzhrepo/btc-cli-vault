@@ -10,7 +10,7 @@ const (
 	DEFAULT_CLOUD_FILE_DIR  = "/BtcWallet"
 	DEFAULT_CLOUD_FILE_NAME = "wallet.json"
 
-	DEFAULT_UTXO_API_URL         = "https://mempool.fractalbitcoin.io/api/address/%s/utxo"
+	DEFAULT_UTXO_API_URL         = "https://mempool.space/api/address/%s/utxo"
 	DEFAULT_UTXO_TESTNET_API_URL = "https://mempool.space/testnet/api/address/%s/utxo"
 
 	DEFAULT_FEE_URL         = "https://mempool.space/api/v1/fees/recommended"
