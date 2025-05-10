@@ -1,4 +1,4 @@
-# Bitcoin CLI Vault (v0.1.1)
+# Bitcoin CLI Vault (v0.1.2)
 
 A secure command-line wallet for Bitcoin that supports multiple key storage providers.
 
@@ -160,19 +160,19 @@ btc-cli consolidate-utxos --wallet wallet.json
 
 ### From Binary Releases
 
-Download the latest release (v0.1.1) from the [Releases page](https://github.com/ethanzhrepo/btc-cli-vault/releases).
+Download the latest release (v0.1.2) from the [Releases page](https://github.com/ethanzhrepo/btc-cli-vault/releases).
 
 #### Linux
 
 ```bash
 # Download the binary
-wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-linux-amd64
+wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.2/btc-cli-0.1.2-linux-amd64
 
 # Make it executable
-chmod +x btc-cli-0.1.1-linux-amd64
+chmod +x btc-cli-0.1.2-linux-amd64
 
 # Move to a directory in your PATH (optional)
-sudo mv btc-cli-0.1.1-linux-amd64 /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.2-linux-amd64 /usr/local/bin/btc-cli
 
 # Run the binary
 btc-cli --help
@@ -182,13 +182,13 @@ btc-cli --help
 
 ```bash
 # Download the binary
-curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-macos-arm64
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.2/btc-cli-0.1.2-macos-arm64
 
 # Make it executable
-chmod +x btc-cli-0.1.1-macos-arm64
+chmod +x btc-cli-0.1.2-macos-arm64
 
 # Move to a directory in your PATH (optional)
-sudo mv btc-cli-0.1.1-macos-arm64 /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.2-macos-arm64 /usr/local/bin/btc-cli
 
 # Run the binary
 btc-cli --help
@@ -198,7 +198,7 @@ btc-cli --help
 
 #### Windows
 
-1. Download the Windows executable (btc-cli-0.1.1-windows-amd64.exe) from the releases page
+1. Download the Windows executable (btc-cli-0.1.2-windows-amd64.exe) from the releases page
 2. Rename it to btc-cli.exe (optional)
 3. Open Command Prompt or PowerShell and navigate to the download location
 4. Run the executable: `.\btc-cli.exe --help`

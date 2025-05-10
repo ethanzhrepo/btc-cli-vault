@@ -1,4 +1,4 @@
-# btc命令行钱包 (v0.1.1)
+# btc命令行钱包 (v0.1.2)
 
 一个安全的btc命令行钱包，支持多种密钥存储的命令行程序，避免私钥丢失或者泄漏风险。
 
@@ -158,19 +158,19 @@ btc-cli consolidate-utxos --wallet wallet.json
 
 ### 从二进制发布版
 
-从[发布页面](https://github.com/ethanzhrepo/btc-cli-vault/releases)下载最新版本 (v0.1.1)。
+从[发布页面](https://github.com/ethanzhrepo/btc-cli-vault/releases)下载最新版本 (v0.1.2)。
 
 #### Linux
 
 ```bash
 # 下载二进制文件
-wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-linux-amd64
+wget https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.2/btc-cli-0.1.2-linux-amd64
 
 # 添加执行权限
-chmod +x btc-cli-0.1.1-linux-amd64
+chmod +x btc-cli-0.1.2-linux-amd64
 
 # 移动到PATH目录（可选）
-sudo mv btc-cli-0.1.1-linux-amd64 /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.2-linux-amd64 /usr/local/bin/btc-cli
 
 # 运行
 btc-cli --help
@@ -180,13 +180,13 @@ btc-cli --help
 
 ```bash
 # 下载二进制文件
-curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.1/btc-cli-0.1.1-macos-arm64
+curl -LO https://github.com/ethanzhrepo/btc-cli-vault/releases/download/v0.1.2/btc-cli-0.1.2-macos-arm64
 
 # 添加执行权限
-chmod +x btc-cli-0.1.1-macos-arm64
+chmod +x btc-cli-0.1.2-macos-arm64
 
 # 移动到PATH目录（可选）
-sudo mv btc-cli-0.1.1-macos-arm64 /usr/local/bin/btc-cli
+sudo mv btc-cli-0.1.2-macos-arm64 /usr/local/bin/btc-cli
 
 # 运行
 btc-cli --help
@@ -196,7 +196,7 @@ btc-cli --help
 
 #### Windows
 
-1. 从发布页面下载Windows可执行文件 (btc-cli-0.1.1-windows-amd64.exe)
+1. 从发布页面下载Windows可执行文件 (btc-cli-0.1.2-windows-amd64.exe)
 2. 重命名为btc-cli.exe（可选）
 3. 打开命令提示符或PowerShell，导航到下载位置
 4. 运行可执行文件：`.\btc-cli.exe --help`

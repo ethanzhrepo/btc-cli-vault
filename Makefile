@@ -1,4 +1,4 @@
-VERSION=0.1.1
+VERSION=0.1.2
 BINARY=btc-cli
 RELEASE_DIR=release
 ARCH=$(shell uname -m)
