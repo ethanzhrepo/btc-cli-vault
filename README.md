@@ -48,10 +48,10 @@ Always keep multiple backups of your encrypted wallet files and ensure you never
 
 ## Supported Address Types
 
- [x] Legacy addresses (P2PKH)
- [x] SegWit addresses (P2WPKH)
- [ ] Nested SegWit addresses (P2SH-P2WPKH)
- [ ] Taproot addresses (P2TR)
+- [x] Legacy addresses (P2PKH)
+- [x] SegWit addresses (P2WPKH)
+- [ ] Nested SegWit addresses (P2SH-P2WPKH)
+- [ ] Taproot addresses (P2TR)
 
 > **TODO:** P2TR and P2SH address types are planned but not yet fully implemented in the current version.
 

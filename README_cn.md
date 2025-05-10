@@ -46,10 +46,10 @@
 
 ## 支持的地址类型
 
- [x] 传统地址 (P2PKH)
- [x] 隔离见证地址 (P2WPKH)
- [ ] 嵌套隔离见证地址 (P2SH-P2WPKH)
- [ ] Taproot地址 (P2TR)
+- [x] 传统地址 (P2PKH)
+- [x] 隔离见证地址 (P2WPKH)
+- [ ] 嵌套隔离见证地址 (P2SH-P2WPKH)
+- [ ] Taproot地址 (P2TR)
 
 > **TODO:** P2TR 和 P2SH 地址类型已计划但尚未在当前版本中完全实现。
 
