@@ -75,6 +75,7 @@ Author: https://x.com/0x99_Ethan`,
 	rootCmd.AddCommand(cmd.UtxoCmd())
 	rootCmd.AddCommand(cmd.FeeCmd())
 	rootCmd.AddCommand(cmd.ConsolidateUtxosCmd())
+	rootCmd.AddCommand(cmd.QRCmd())
 
 	fd := int(os.Stdin.Fd())
 

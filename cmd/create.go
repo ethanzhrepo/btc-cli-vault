@@ -324,7 +324,7 @@ Examples:
 						fmt.Printf("Wallet saved to: %s\n", fullPath)
 					}
 
-				case "google", "dropbox", "s3", "box":
+				case "google", "dropbox", "s3", "box", "keychain":
 					// 保存到云存储
 					cloudPath := filepath.Join(util.GetCloudFileDir(), walletName+".json")
 					result, err := util.Put(output.Method, walletJSON, cloudPath, force)
