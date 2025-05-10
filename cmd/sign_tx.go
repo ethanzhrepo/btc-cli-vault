@@ -426,23 +426,8 @@ func signRawTransaction(tx *wire.MsgTx, privateKey *btcec.PrivateKey, selectedAc
 
 		case "p2sh-p2wpkh", "nested-segwit":
 			// Create a nested SegWit signature
-			pubKey := privateKey.PubKey().SerializeCompressed()
-			pubKeyHash := btcutil.Hash160(pubKey)
-
-			// Create the witness script
-			witnessScript, err := txscript.NewScriptBuilder().
-				AddOp(txscript.OP_DUP).
-				AddOp(txscript.OP_HASH160).
-				AddData(pubKeyHash).
-				AddOp(txscript.OP_EQUALVERIFY).
-				AddOp(txscript.OP_CHECKSIG).
-				Script()
-			if err != nil {
-				return nil, fmt.Errorf("error creating witness script: %v", err)
-			}
-
 			sig, err := txscript.WitnessSignature(signedTx, txscript.NewTxSigHashes(signedTx, prevOutFetcher),
-				i, value, witnessScript, txscript.SigHashAll, privateKey, true)
+				i, value, redeemScript, txscript.SigHashAll, privateKey, true)
 			if err != nil {
 				return nil, fmt.Errorf("error creating witness signature: %v", err)
 			}

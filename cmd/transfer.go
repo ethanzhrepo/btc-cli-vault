@@ -678,17 +678,19 @@ func createAndSignTransaction(
 	// Based on the account type, prepare necessary scripts
 	switch selectedAccount.Type {
 	case "p2sh-p2wpkh", "nested-segwit":
-		// Decode redeem script from account if available
-		if selectedAccount.RedeemScript != "" {
-			var err error
-			redeemScript, err = hex.DecodeString(selectedAccount.RedeemScript)
-			if err != nil {
-				return nil, fmt.Errorf("error decoding redeem script from account: %v", err)
-			}
-		} else {
-			// No fallback - require the redeem script to be present in the wallet
-			return nil, fmt.Errorf("missing redeem script for P2SH-P2WPKH account - redeem script must be provided in the wallet file")
+		// Dynamically derive the redeemScript instead of using the stored one
+		publicKey := privateKey.PubKey()
+		pubKeyHash := btcutil.Hash160(publicKey.SerializeCompressed())
+		builder := txscript.NewScriptBuilder()
+		builder.AddOp(txscript.OP_0)
+		builder.AddData(pubKeyHash)
+		derivedRedeemScript, err := builder.Script()
+		if err != nil {
+			return nil, fmt.Errorf("error dynamically creating redeem script: %v", err)
 		}
+		redeemScript = derivedRedeemScript
+		// No longer need to check selectedAccount.RedeemScript or decode it.
+		// The error for missing redeem script in wallet file is also no longer applicable here for derivation.
 	case "p2tr", "taproot":
 		// For Taproot, decode the internal pubkey if available
 		if selectedAccount.InternalPubKey != "" {
@@ -789,10 +791,12 @@ func createAndSignTransaction(
 			// Extract the script hash (20 bytes)
 			scriptHash := pkScript[2:22]
 
-			// Verify this is the correct redeem script
-			storedScriptHash := btcutil.Hash160(redeemScript)
+			// Verify this is the correct redeem script (using the dynamically derived one)
+			storedScriptHash := btcutil.Hash160(redeemScript) // redeemScript is now the dynamically derived one
+			fmt.Printf("Debug: scriptHash from UTXO: %x\n", scriptHash)
+			fmt.Printf("Debug: storedScriptHash from Wallet (dynamically derived): %x\n", storedScriptHash)
 			if !bytes.Equal(scriptHash, storedScriptHash) {
-				return nil, fmt.Errorf("UTXO at input %d is not for the selected account's P2SH address (hash mismatch)", i)
+				return nil, fmt.Errorf("UTXO at input %d is not for the selected account's P2SH address (hash mismatch with dynamically derived redeem script)", i)
 			}
 
 			// Sign with the redeem script

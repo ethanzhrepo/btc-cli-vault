@@ -260,12 +260,12 @@ Examples:
 			accounts = append(accounts, p2wpkhAccount)
 
 			// 3. 添加 BIP49 账户 (Nested SegWit P2SH-P2WPKH)
-			p2shAccount, err := createAccountInfo("nested-segwit", BIP49Purpose, coinType, masterKey, params)
-			if err != nil {
-				fmt.Printf("Error creating nested-segwit account: %v\n", err)
-				os.Exit(1)
-			}
-			accounts = append(accounts, p2shAccount)
+			// p2shAccount, err := createAccountInfo("nested-segwit", BIP49Purpose, coinType, masterKey, params)
+			// if err != nil {
+			// 	fmt.Printf("Error creating nested-segwit account: %v\n", err)
+			// 	os.Exit(1)
+			// }
+			// accounts = append(accounts, p2shAccount)
 
 			// 4. 添加 BIP86 账户 (Taproot P2TR)
 			p2trAccount, err := createAccountInfo("taproot", BIP86Purpose, coinType, masterKey, params)
@@ -582,6 +582,7 @@ func createAccountInfo(accountType string, purpose uint32, coinType uint32, mast
 
 	// 提前计算公钥哈希，多种地址类型会用到
 	pubKeyHash := btcutil.Hash160(publicKey.SerializeCompressed())
+	fmt.Printf("[DEBUG CREATE] Public Key Hash: %x\n", pubKeyHash)
 
 	switch standardizedType {
 	case "p2pkh":
@@ -594,20 +595,41 @@ func createAccountInfo(accountType string, purpose uint32, coinType uint32, mast
 			AddOp(txscript.OP_0).
 			AddData(pubKeyHash).
 			Script()
+		fmt.Printf("[DEBUG CREATE] P2WPKH Script: %x\n", p2wpkhScript)
 		if err != nil {
 			return account, fmt.Errorf("error creating P2WPKH script: %v", err)
 		}
 
 		// 存储十六进制格式的赎回脚本
 		account.RedeemScript = hex.EncodeToString(p2wpkhScript)
-
+		fmt.Printf("[DEBUG CREATE] Redeem Script: %x\n", p2wpkhScript)
 		// 使用赎回脚本生成P2SH地址
 		scriptHash := btcutil.Hash160(p2wpkhScript)
+
+		// for test
+		scriptHashToUse := btcutil.Hash160(p2wpkhScript)
+		fmt.Printf("[DEBUG CREATE] Calculated scriptHashToUse (from HASH160(p2wpkhScript)): %x\n", scriptHashToUse)
 		addr, err := btcutil.NewAddressScriptHash(scriptHash, params)
 		if err != nil {
 			return account, fmt.Errorf("error creating P2SH address: %v", err)
 		}
+		// for test
+		decodedHashFromAddr := addr.ScriptAddress()
+		fmt.Printf("[DEBUG CREATE] Hash from addr.ScriptAddress() immediately after NewAddressScriptHash: %x\n", decodedHashFromAddr)
+
+		// for test
 		address = addr.EncodeAddress()
+		// ... (address = addr.EncodeAddress() 之后)
+		fmt.Printf("[DEBUG CREATE] Account Type: %s\n", standardizedType)
+		fmt.Printf("[DEBUG CREATE]   Derivation Path: %s\n", account.DerivationPath)
+		fmt.Printf("[DEBUG CREATE]   Generated Address String: %s\n", address)
+		decodedAddrForDebug, _ := btcutil.DecodeAddress(address, params)
+		if p2shAddrForDebug, ok := decodedAddrForDebug.(*btcutil.AddressScriptHash); ok {
+			fmt.Printf("[DEBUG CREATE]   Decoded ScriptHash from Address String: %x\n", p2shAddrForDebug.Hash160()[:])
+		}
+		fmt.Printf("[DEBUG CREATE]   Stored RedeemScript (hex): %s\n", account.RedeemScript)
+		storedRedeemScriptBytesForDebug, _ := hex.DecodeString(account.RedeemScript)
+		fmt.Printf("[DEBUG CREATE]   HASH160 of Stored RedeemScript: %x\n", btcutil.Hash160(storedRedeemScriptBytesForDebug))
 		err2 = nil // 我们已经处理了错误
 	case "p2tr":
 		// 创建Taproot内部密钥和地址
