@@ -287,12 +287,12 @@ Examples:
 			// accounts = append(accounts, p2shAccount)
 
 			// 4. 添加 BIP86 账户 (Taproot P2TR)
-			p2trAccount, err := createAccountInfo("taproot", BIP86Purpose, coinType, masterKey, params)
-			if err != nil {
-				fmt.Printf("Error creating taproot account: %v\n", err)
-				os.Exit(1)
-			}
-			accounts = append(accounts, p2trAccount)
+			// p2trAccount, err := createAccountInfo("taproot", BIP86Purpose, coinType, masterKey, params)
+			// if err != nil {
+			// 	fmt.Printf("Error creating taproot account: %v\n", err)
+			// 	os.Exit(1)
+			// }
+			// accounts = append(accounts, p2trAccount)
 
 			// 创建钱包文件对象
 			wallet := WalletFile{

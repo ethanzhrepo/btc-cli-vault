@@ -17,6 +17,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/ethanzhrepo/btc-cli-vault/util"
+	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/term"
@@ -28,6 +29,7 @@ func GetAddressCmd() *cobra.Command {
 	var walletName string
 	var showMnemonics bool
 	var showPrivateKey bool
+	var showQR bool
 
 	cmd := &cobra.Command{
 		Use:   "get",
@@ -193,7 +195,6 @@ func GetAddressCmd() *cobra.Command {
 					case "p2wpkh", "segwit":
 						addr, err = generateP2WPKHAddress(pubKey, params)
 					case "p2sh-p2wpkh", "nested-segwit":
-						// Use redeem script if available
 						addr, err = generateP2SHAddressFromAccount(account, pubKey, params)
 					case "p2tr", "taproot":
 						addr, err = generateP2TRAddress(pubKey, params)
@@ -206,7 +207,14 @@ func GetAddressCmd() *cobra.Command {
 						fmt.Printf("Error generating address for %s: %v\n", accountTypeName, err)
 						continue
 					}
-
+					qr, err := qrcode.New(addr, qrcode.Medium)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Error generating QR code: %v\n", err)
+						os.Exit(1)
+					}
+					if showQR {
+						fmt.Println(qr.ToSmallString(false))
+					}
 					// 显示地址信息
 					fmt.Printf("%s address: \033[1;32m%s\033[0m\n", accountTypeName, addr)
 					fmt.Printf("  Derivation path: %s\n", account.DerivationPath)
@@ -290,12 +298,12 @@ func GetAddressCmd() *cobra.Command {
 				// fmt.Printf("P2SH-P2WPKH address: \033[1;32m%s\033[0m\n", p2shAddr)
 
 				// P2TR (Taproot)
-				p2trAddr, err := generateP2TRAddress(publicKey, params)
-				if err != nil {
-					fmt.Printf("Error generating P2TR address: %v\n", err)
-					os.Exit(1)
-				}
-				fmt.Printf("P2TR address: \033[1;32m%s\033[0m\n", p2trAddr)
+				// p2trAddr, err := generateP2TRAddress(publicKey, params)
+				// if err != nil {
+				// 	fmt.Printf("Error generating P2TR address: %v\n", err)
+				// 	os.Exit(1)
+				// }
+				// fmt.Printf("P2TR address: \033[1;32m%s\033[0m\n", p2trAddr)
 
 				// 如果开启显示私钥参数，则输出私钥
 				if showPrivateKey {
@@ -319,6 +327,7 @@ func GetAddressCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&walletName, "name", "n", "", "Name of the wallet file (required for cloud storage)")
 	cmd.Flags().BoolVar(&showMnemonics, "show-mnemonics", false, "Display the decrypted mnemonic phrase")
 	cmd.Flags().BoolVar(&showPrivateKey, "show-private-key", false, "Display the private key in WIF format")
+	cmd.Flags().BoolVar(&showQR, "qr", false, "Display the QR code for the address")
 
 	cmd.MarkFlagRequired("input")
 
