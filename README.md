@@ -9,9 +9,6 @@ A secure command-line wallet for Bitcoin that supports multiple key storage prov
 ![GitHub License](https://img.shields.io/github/license/ethanzhrepo/btc-cli-vault)
 
 
-<a href="https://t.me/ethanatca"><img alt="" src="https://img.shields.io/badge/Telegram-%40ethanatca-blue" /></a>
-<img alt="X (formerly Twitter) Follow" src="https://img.shields.io/twitter/follow/0x99_Ethan">
-</a>
 
 
 ## Problem Solved
